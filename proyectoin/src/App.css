@@ -1,0 +1,356 @@
+/* ============================================================
+   App.css - Estilos del Panel de Actividades Evaluativas
+   ============================================================ */
+
+/* --- RESET Y BASE --- */
+/* Esto elimina márgenes y rellenos por defecto del navegador */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box; /* El padding no agranda los elementos */
+}
+
+/* Fuente general y color de fondo de toda la página */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f0f2f5;
+  color: #333;
+}
+
+/* ============================================================
+   CABECERA
+   ============================================================ */
+
+/* El div que contiene el título y las pestañas */
+.cabecera {
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 0 24px;
+  position: sticky; /* Se queda fija arriba al hacer scroll */
+  top: 0;
+  z-index: 100;
+}
+
+/* Título con ícono */
+.cabecera-titulo {
+  display: flex;         /* Pone el ícono y el texto en la misma fila */
+  align-items: center;   /* Los centra verticalmente */
+  gap: 10px;             /* Espacio entre el ícono y el texto */
+  padding-top: 16px;
+}
+
+.icono-cabecera {
+  font-size: 22px;
+}
+
+.cabecera-titulo h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* ============================================================
+   PESTAÑAS DE NAVEGACIÓN
+   ============================================================ */
+
+/* Contenedor de las pestañas */
+.tabs {
+  display: flex;  /* Las pestañas se ponen una al lado de la otra */
+  gap: 4px;
+  margin-top: 12px;
+}
+
+/* Estilo de cada pestaña (botón) */
+.tab {
+  background: none;          /* Sin fondo */
+  border: none;              /* Sin borde */
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;           /* El cursor se convierte en mano al pasar */
+  color: #666;
+  border-bottom: 3px solid transparent; /* Borde invisible por defecto */
+  transition: all 0.2s;      /* Animación suave al cambiar */
+}
+
+.tab:hover {
+  color: #2563eb;            /* Color azul al pasar el mouse */
+}
+
+/* Pestaña activa (seleccionada) */
+.tab.activa {
+  color: #2563eb;
+  border-bottom: 3px solid #2563eb; /* Línea azul debajo */
+  font-weight: 600;
+}
+
+/* ============================================================
+   CONTENIDO PRINCIPAL
+   ============================================================ */
+
+.contenido {
+  max-width: 860px;     /* Ancho máximo del contenido */
+  margin: 28px auto;    /* Centrado horizontal con margen arriba/abajo */
+  padding: 0 20px;
+}
+
+/* Título y fecha del panel */
+.panel-titulo {
+  margin-bottom: 24px;
+}
+
+.panel-titulo h2 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.fecha {
+  font-size: 13px;
+  color: #888;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   TARJETAS DE ESTADÍSTICAS
+   ============================================================ */
+
+/* Contenedor de las 4 tarjetas - usa CSS Grid */
+.estadisticas {
+  display: grid;
+  /* 4 columnas iguales que se adaptan al espacio disponible */
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* Cada tarjeta individual */
+.tarjeta {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column; /* Los elementos se apilan verticalmente */
+  gap: 6px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+
+.tarjeta-label {
+  font-size: 12px;
+  color: #888;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* El número grande de cada tarjeta */
+.tarjeta-numero {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Colores distintos para cada número */
+.azul    { color: #2563eb; }
+.morado  { color: #7c3aed; }
+.naranja { color: #ea580c; }
+.rojo    { color: #dc2626; }
+
+.tarjeta-descripcion {
+  font-size: 12px;
+  color: #999;
+}
+
+/* ============================================================
+   SECCIONES (tarjetas grandes)
+   ============================================================ */
+
+.seccion {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+
+/* Título de cada sección */
+.seccion-titulo {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ============================================================
+   ESTADO VACÍO (cuando no hay actividades)
+   ============================================================ */
+
+.vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;   /* Centra horizontalmente */
+  justify-content: center;
+  padding: 32px 0;
+  gap: 12px;
+  color: #888;
+}
+
+/* El círculo con la palomita verde */
+.check-verde {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;          /* Hace el div redondo */
+  border: 3px solid #22c55e;  /* Borde verde */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: #22c55e;
+  font-weight: bold;
+}
+
+/* Botón "Crear nueva actividad" */
+.btn-crear {
+  margin-top: 8px;
+  padding: 8px 20px;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  color: #444;
+  transition: all 0.2s;
+}
+
+.btn-crear:hover {
+  background-color: #f5f5f5;
+  border-color: #aaa;
+}
+
+/* ============================================================
+   LISTA DE ACTIVIDADES
+   ============================================================ */
+
+.lista-actividades {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Cada fila de actividad */
+.actividad-fila {
+  display: flex;
+  justify-content: space-between; /* Info a la izquierda, badge a la derecha */
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f0f0; /* Línea separadora */
+}
+
+/* Quitamos la línea del último elemento */
+.actividad-fila:last-child {
+  border-bottom: none;
+}
+
+/* Contenedor del nombre y fecha */
+.actividad-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.actividad-nombre {
+  font-size: 15px;
+  font-weight: 500;
+  color: #1a1a2e;
+}
+
+.actividad-fecha {
+  font-size: 12px;
+  color: #888;
+}
+
+/* ============================================================
+   BADGES (etiquetas de tipo de actividad)
+   ============================================================ */
+
+/* Estilo base de todos los badges */
+.badge {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  color: #555;
+}
+
+/* Colores específicos por tipo */
+.badge-exam         { border-color: #fca5a5; background: #fff5f5; color: #b91c1c; }
+.badge-project      { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+.badge-presentation { border-color: #6ee7b7; background: #f0fdf4; color: #065f46; }
+
+/* ============================================================
+   SECCIÓN DE ALERTAS
+   ============================================================ */
+
+.seccion-alerta {
+  border: 1px solid #fed7aa; /* Borde anaranjado */
+  background-color: #fff7ed; /* Fondo crema */
+}
+
+.alerta-titulo {
+  color: #c2410c; /* Naranja oscuro */
+}
+
+.alerta-subtitulo {
+  font-size: 14px;
+  color: #c2410c;
+  margin-bottom: 12px;
+}
+
+/* Fila dentro de la sección de alertas */
+.alerta-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #fed7aa;
+}
+
+.alerta-fila:last-child {
+  border-bottom: none;
+}
+
+/* Botón "Ver conflictos" */
+.btn-conflicto {
+  padding: 7px 16px;
+  border: 1px solid #c2410c;
+  border-radius: 8px;
+  background: white;
+  color: #c2410c;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  white-space: nowrap; /* Evita que el texto se parta */
+}
+
+.btn-conflicto:hover {
+  background-color: #c2410c;
+  color: white;
+}
+
+/* ============================================================
+   DISEÑO RESPONSIVE
+   En pantallas pequeñas las 4 tarjetas pasan a 2 columnas
+   ============================================================ */
+@media (max-width: 600px) {
+  .estadisticas {
+    grid-template-columns: repeat(2, 1fr); /* Solo 2 columnas en móvil */
+  }
+
+  .cabecera-titulo h1 {
+    font-size: 15px;
+  }
+}
