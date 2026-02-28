@@ -12,7 +12,7 @@ function App() {
 
   // 🔌 CONEXIÓN CON DJANGO
   useEffect(() => {
-    fetch("https://miniproyecto-1-zfn4.onrender.com/api/productos/")
+    fetch("https://miniproyecto-1-zfn4.onrender.com/api/asignaturas/")
       .then(res => res.json())
       .then(data => {
         console.log("Datos recibidos:", data);
