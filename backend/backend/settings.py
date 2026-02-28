@@ -143,4 +143,5 @@ AUTH_USER_MODEL = 'api.Usuario'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://miniproyecto-1.vercel.app",
+    "https://miniproyecto-1-b33vm9b8n-santis098s-projects.vercel.app",
 ]
