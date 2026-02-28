@@ -1,6 +1,8 @@
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from rest_framework import viewsets
+from .models import Asignatura
+from .serializers import AsignaturaSerializer
 
-@api_view(['GET'])
-def health_check(request):
-    return Response({"status": "API funcionando"})
+
+class AsignaturaViewSet(viewsets.ModelViewSet):
+    queryset = Asignatura.objects.all()
+    serializer_class = AsignaturaSerializer
