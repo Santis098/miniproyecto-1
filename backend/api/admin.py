@@ -12,3 +12,7 @@ admin.site.register(Usuario)
 from .models import Asignatura
 
 admin.site.register(Asignatura)
+
+from .models import Activity
+
+admin.site.register(Activity)
