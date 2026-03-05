@@ -46,3 +46,16 @@ class Activity(models.Model):
 
     def __str__(self):
         return self.title
+
+class Subtask(models.Model):
+    title = models.CharField(max_length=255)
+    is_completed = models.BooleanField(default=False)
+
+    activity = models.ForeignKey(
+        Activity,
+        on_delete=models.CASCADE,
+        related_name="subtasks"
+    )
+
+    def __str__(self):
+        return self.title

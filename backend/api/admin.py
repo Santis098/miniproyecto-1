@@ -1,18 +1,7 @@
 from django.contrib import admin
-
-# Register your models here.
-
-
-from .models import Usuario
+from .models import Usuario, Asignatura, Activity, Subtask
 
 admin.site.register(Usuario)
-
-
-
-from .models import Asignatura
-
 admin.site.register(Asignatura)
-
-from .models import Activity
-
 admin.site.register(Activity)
+admin.site.register(Subtask)
