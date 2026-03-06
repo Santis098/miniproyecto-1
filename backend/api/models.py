@@ -42,6 +42,9 @@ class Activity(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     due_date = models.DateField()
+    start_date = models.DateField(null=True, blank=True)        # ← NUEVO
+    difficulty = models.CharField(max_length=20, null=True, blank=True)   # ← NUEVO
+    activity_type = models.CharField(max_length=20, null=True, blank=True) # ← NUEVO
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
