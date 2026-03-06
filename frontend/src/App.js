@@ -1,14 +1,15 @@
 // ============================================================
 // App.js - Dashboard Académico Moderno
 // ============================================================
-
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import CreateActivity from './CreateActivity';
 
 function App() {
 
   const [tabActiva, setTabActiva] = useState('hoy');
   const [asignaturas, setAsignaturas] = useState([]);
+  const [mostrarFormulario, setMostrarFormulario] = useState(false); // ← NUEVO
 
   // 🔌 Conexión con Django
   useEffect(() => {
@@ -63,6 +64,24 @@ function App() {
               {new Date().toLocaleDateString()}
             </span>
           </div>
+
+          {/* ← BOTÓN Y FORMULARIO NUEVO */}
+          <button
+            className="btn-nueva-actividad"
+            onClick={() => setMostrarFormulario(true)}
+          >
+            + Nueva Actividad
+          </button>
+
+          {mostrarFormulario && (
+            <CreateActivity
+              onClose={() => setMostrarFormulario(false)}
+              onActivityCreated={() => {
+                // Aquí después puedes recargar la lista de actividades
+                console.log('Actividad creada');
+              }}
+            />
+          )}
 
           <div className="estadisticas">
 
