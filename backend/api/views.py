@@ -7,10 +7,26 @@ from .serializers import AsignaturaSerializer, ActivitySerializer, SubtaskSerial
 class AsignaturaViewSet(viewsets.ModelViewSet):
     queryset = Asignatura.objects.all()
     serializer_class = AsignaturaSerializer
-class ActivityViewSet(viewsets.ModelViewSet):
+    
+# Vista para crear una nueva Actividad
+class ActivityCreateAPIView(generics.CreateAPIView):
     queryset = Activity.objects.all()
     serializer_class = ActivitySerializer
 
-class SubtaskViewSet(viewsets.ModelViewSet):
+
+# Vista para listar todas las Actividades
+class ActivityListAPIView(generics.ListAPIView):
+    queryset = Activity.objects.all()
+    serializer_class = ActivitySerializer
+
+
+# Vista para crear una nueva Subtarea
+class SubtaskCreateAPIView(generics.CreateAPIView):
+    queryset = Subtask.objects.all()
+    serializer_class = SubtaskSerializer
+
+
+# Vista para listar todas las Subtareas
+class SubtaskListAPIView(generics.ListAPIView):
     queryset = Subtask.objects.all()
     serializer_class = SubtaskSerializer
