@@ -17,12 +17,9 @@ class SubtaskSerializer(serializers.ModelSerializer):
 
 # Serializador de Actividades
 class ActivitySerializer(serializers.ModelSerializer):
-    subtasks = SubtaskSerializer(many=True, write_only=True)  # Permitir agregar subtareas al crear la actividad
+    subtasks = SubtaskSerializer(many=True, required=False, write_only=True)  # Permitir agregar subtareas al crear la actividad, y hacerlo opcional
 
-    # Validación del título: es obligatorio
     title = serializers.CharField(required=True)
-
-    # Validación de due_date: es obligatorio y debe ser una fecha futura
     due_date = serializers.DateField(required=True)
 
     class Meta:
@@ -41,7 +38,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("El título debe tener al menos 3 caracteres.")
         return value
 
-    # Sobrescribimos el método `create` para manejar la creación de la actividad y sus subtareas
+    # Sobrescribir el método `create` para manejar la creación de la actividad y sus subtareas
     def create(self, validated_data):
         subtasks_data = validated_data.pop('subtasks', [])  # Extraemos las subtareas de los datos
         activity = Activity.objects.create(**validated_data)  # Creamos la actividad
