@@ -1,4 +1,5 @@
 from rest_framework import viewsets
+from rest_framework import generics
 from .models import Asignatura, Activity, Subtask
 from .serializers import AsignaturaSerializer, ActivitySerializer, SubtaskSerializer
 
