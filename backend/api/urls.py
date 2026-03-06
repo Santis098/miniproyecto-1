@@ -14,4 +14,7 @@ urlpatterns = [
     # Rutas para Subtasks
     path('api/subtasks/', SubtaskListAPIView.as_view(), name='subtask-list'),  # Listar todas las subtareas
     path('api/subtasks/create/', SubtaskCreateAPIView.as_view(), name='subtask-create'),  # Crear una nueva subtarea
+
+    # Incluir las rutas de asignaturas
+    path('api/', include(router.urls)),  # Aquí se incluyen las rutas generadas por DefaultRouter
 ]
