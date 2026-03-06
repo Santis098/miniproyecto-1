@@ -1,20 +1,12 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path, include
-from .views import AsignaturaViewSet
-from .views import ActivityCreateAPIView, ActivityListAPIView, SubtaskCreateAPIView, SubtaskListAPIView
+from .views import AsignaturaViewSet, ActivityViewSet, SubtaskViewSet
 
 router = DefaultRouter()
 router.register(r'asignaturas', AsignaturaViewSet)
+router.register(r'activities', ActivityViewSet)
+router.register(r'subtasks', SubtaskViewSet)
 
 urlpatterns = [
-    # Rutas para Activities
-    path('api/activities/', ActivityListAPIView.as_view(), name='activity-list'),  # Listar todas las actividades
-    path('api/activities/create/', ActivityCreateAPIView.as_view(), name='activity-create'),  # Crear una nueva actividad
-
-    # Rutas para Subtasks
-    path('api/subtasks/', SubtaskListAPIView.as_view(), name='subtask-list'),  # Listar todas las subtareas
-    path('api/subtasks/create/', SubtaskCreateAPIView.as_view(), name='subtask-create'),  # Crear una nueva subtarea
-
-    # Incluir las rutas de asignaturas
-    path('api/', include(router.urls)),  # Aquí se incluyen las rutas generadas por DefaultRouter
+    path('api/', include(router.urls)),
 ]

@@ -1,15 +1,12 @@
 from rest_framework import serializers
 from .models import Asignatura, Activity, Subtask
+from django.utils import timezone
 
-
+# Serializador de Asignaturas
 class AsignaturaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Asignatura
         fields = '__all__'
-        
-from rest_framework import serializers
-from .models import Activity, Subtask
-
 
 # Serializador de Subtareas
 class SubtaskSerializer(serializers.ModelSerializer):
@@ -20,7 +17,7 @@ class SubtaskSerializer(serializers.ModelSerializer):
 
 # Serializador de Actividades
 class ActivitySerializer(serializers.ModelSerializer):
-    subtasks = SubtaskSerializer(many=True, read_only=True)
+    subtasks = SubtaskSerializer(many=True, write_only=True)  # Permitir agregar subtareas al crear la actividad
 
     # Validación del título: es obligatorio
     title = serializers.CharField(required=True)
@@ -32,14 +29,25 @@ class ActivitySerializer(serializers.ModelSerializer):
         model = Activity
         fields = '__all__'
 
-    # Validación personalizada si necesitas más control sobre la fecha (opcional)
+    # Validación personalizada de la fecha de vencimiento
     def validate_due_date(self, value):
         if value < timezone.now().date():
             raise serializers.ValidationError("La fecha de vencimiento no puede ser anterior a la fecha actual.")
         return value
 
-    # Validación personalizada del título (por si necesitas alguna condición extra)
+    # Validación personalizada del título
     def validate_title(self, value):
         if len(value) < 3:
             raise serializers.ValidationError("El título debe tener al menos 3 caracteres.")
         return value
+
+    # Sobrescribimos el método `create` para manejar la creación de la actividad y sus subtareas
+    def create(self, validated_data):
+        subtasks_data = validated_data.pop('subtasks', [])  # Extraemos las subtareas de los datos
+        activity = Activity.objects.create(**validated_data)  # Creamos la actividad
+
+        # Creamos las subtareas relacionadas con la actividad
+        for subtask_data in subtasks_data:
+            Subtask.objects.create(activity=activity, **subtask_data)
+        
+        return activity
