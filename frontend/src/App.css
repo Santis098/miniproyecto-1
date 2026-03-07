@@ -145,3 +145,63 @@ body {
   .actividad-izq { min-width: auto; flex-direction: row; gap: 8px; }
   .actividad-badges { flex-direction: row; }
 }
+/* ================= BOTONES ACTIVIDAD ================= */
+.btn-ver-act {
+  background: none;
+  border: 1px solid #2563eb;
+  color: #2563eb;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.btn-ver-act:hover { background: #2563eb; color: white; }
+
+.btn-eliminar-actividad {
+  padding: 3px 8px;
+  font-size: 12px;
+  border: 1px solid #dc2626;
+  color: #dc2626;
+  background: none;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.btn-eliminar-actividad:hover { background: #dc2626; color: white; }
+
+/* ================= MODAL CONFIRMAR ================= */
+.confirm-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+.confirm-modal {
+  background: white;
+  padding: 28px;
+  border-radius: 14px;
+  width: 380px;
+  max-width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  text-align: center;
+}
+.confirm-modal h3 { margin-bottom: 12px; font-size: 18px; }
+.confirm-modal p  { font-size: 14px; color: #444; margin-bottom: 8px; }
+.confirm-aviso    { font-size: 12px !important; color: #dc2626 !important; margin-bottom: 20px !important; }
+.confirm-botones  { display: flex; gap: 12px; justify-content: center; }
+.confirm-btn-cancelar {
+  padding: 8px 20px; border: 1px solid #ccc; background: white;
+  border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+.confirm-btn-cancelar:hover { background: #f3f4f6; }
+.confirm-btn-eliminar {
+  padding: 8px 20px; border: none; background: #dc2626;
+  color: white; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;
+}
+.confirm-btn-eliminar:hover { background: #b91c1c; }
