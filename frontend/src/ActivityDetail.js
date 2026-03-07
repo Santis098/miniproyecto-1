@@ -19,59 +19,67 @@ const DIFICULTAD_CONFIG = {
 };
 
 function ActivityDetail({ actividad, onClose }) {
+
   const [subtasks, setSubtasks] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
 
   useEffect(() => {
-  console.log("Actividad recibida:", actividad);
 
-  if (!actividad || !actividad.id) {
-    console.log("No hay actividad válida");
-    setCargando(false);
-    return;
-  }
+    if (!actividad?.id) {
+      setCargando(false);
+      return;
+    }
 
-  console.log("Llamando API:", API_BASE + "/api/subtasks/");
+    console.log("Actividad recibida:", actividad);
 
-  fetch(API_BASE + '/api/subtasks/')
-    .then(function(res) {
-      console.log("Status respuesta:", res.status);
-      return res.json();
-    })
-    .then(function(data) {
-      console.log("Subtasks recibidas:", data);
+    setCargando(true);
+    setErrorCarga(false);
 
-      var propias = data.filter(function(st) {
-        return st.activity === actividad.id;
+    fetch(`${API_BASE}/api/subtasks/?activity=${actividad.id}`)
+      .then(res => {
+        console.log("Status respuesta:", res.status);
+
+        if (!res.ok) {
+          throw new Error("Error HTTP " + res.status);
+        }
+
+        return res.json();
+      })
+      .then(data => {
+
+        console.log("Subtasks recibidas:", data);
+
+        // seguridad por si el backend no filtra
+        const propias = data.filter(st => Number(st.activity) === Number(actividad.id));
+
+        console.log("Subtasks filtradas:", propias);
+
+        setSubtasks(propias);
+        setCargando(false);
+
+      })
+      .catch(err => {
+        console.error("Error cargando subtasks:", err);
+        setErrorCarga(true);
+        setCargando(false);
       });
 
-      console.log("Subtasks filtradas:", propias);
-
-      setSubtasks(propias);
-      setCargando(false);
-    })
-    .catch(function(err) {
-      console.error("Error cargando subtasks:", err);
-      setErrorCarga(true);
-      setCargando(false);
-    });
-
-}, [actividad]);
+  }, [actividad]);
 
   if (!actividad) return null;
 
-  var tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
-  var dif = actividad.difficulty ? (DIFICULTAD_CONFIG[actividad.difficulty] || null) : null;
+  const tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
+  const dif = actividad.difficulty ? (DIFICULTAD_CONFIG[actividad.difficulty] || null) : null;
 
   return (
     <div className="ad-overlay" onClick={onClose}>
-      <div className="ad-modal" onClick={function(e) { e.stopPropagation(); }}>
+      <div className="ad-modal" onClick={(e) => e.stopPropagation()}>
 
         <div className="ad-header">
           <div className="ad-badges">
-            <span className={'badge ' + tipo.clase}>{tipo.label}</span>
-            {dif && <span className={'badge-dif ' + dif.clase}>{dif.label}</span>}
+            <span className={`badge ${tipo.clase}`}>{tipo.label}</span>
+            {dif && <span className={`badge-dif ${dif.clase}`}>{dif.label}</span>}
           </div>
           <button className="ad-cerrar" onClick={onClose}>X</button>
         </div>
@@ -83,6 +91,7 @@ function ActivityDetail({ actividad, onClose }) {
         )}
 
         <div className="ad-fechas">
+
           {actividad.start_date && (
             <div className="ad-fecha-item">
               <span className="ad-fecha-label">Inicio</span>
@@ -93,6 +102,7 @@ function ActivityDetail({ actividad, onClose }) {
               </span>
             </div>
           )}
+
           <div className="ad-fecha-item">
             <span className="ad-fecha-label">Vence</span>
             <span className="ad-fecha-valor">
@@ -101,18 +111,28 @@ function ActivityDetail({ actividad, onClose }) {
               })}
             </span>
           </div>
+
         </div>
 
-        {cargando && <p className="ad-cargando">Cargando subtareas...</p>}
-        {errorCarga && <p className="ad-cargando">No se pudieron cargar las subtareas.</p>}
+        {cargando && (
+          <p className="ad-cargando">Cargando subtareas...</p>
+        )}
 
-        {!cargando && !errorCarga && (
+        {errorCarga && (
+          <p className="ad-cargando">No se pudieron cargar las subtareas.</p>
+        )}
+
+        {!cargando && !errorCarga && subtasks.length === 0 && (
+          <p className="ad-cargando">Esta actividad aún no tiene subtareas.</p>
+        )}
+
+        {!cargando && !errorCarga && subtasks.length > 0 && (
           <SubtaskManager
             activityId={actividad.id}
             subtasks={subtasks}
-            onSubtaskAdded={function(nueva) {
-              setSubtasks(function(prev) { return prev.concat([nueva]); });
-            }}
+            onSubtaskAdded={(nueva) =>
+              setSubtasks(prev => [...prev, nueva])
+            }
           />
         )}
 
