@@ -4,10 +4,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import CreateActivity from './CreateActivity';
+import ActivityDetail from './ActivityDetail';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
 
-// Mapeo de tipos de actividad
 const TIPO_CONFIG = {
   exam:         { label: 'Examen',       clase: 'badge-exam' },
   project:      { label: 'Proyecto',     clase: 'badge-project' },
@@ -15,7 +15,6 @@ const TIPO_CONFIG = {
   homework:     { label: 'Tarea',        clase: 'badge-homework' },
 };
 
-// Mapeo de dificultad
 const DIFICULTAD_CONFIG = {
   baja:    { label: 'Baja',    clase: 'dif-baja' },
   media:   { label: 'Media',   clase: 'dif-media' },
@@ -23,7 +22,6 @@ const DIFICULTAD_CONFIG = {
   critica: { label: 'Crítica', clase: 'dif-critica' },
 };
 
-// Cuántos días faltan para una fecha
 function diasRestantes(fechaStr) {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
@@ -41,8 +39,8 @@ function App() {
   const [proximasActividades, setProximasActividades] = useState([]);
   const [cargandoActividades, setCargandoActividades] = useState(true);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [actividadSeleccionada, setActividadSeleccionada] = useState(null);
 
-  // Cargar asignaturas
   useEffect(() => {
     fetch(`${API_BASE}/api/asignaturas/`)
       .then(res => res.json())
@@ -50,8 +48,6 @@ function App() {
       .catch(err => console.error('Error cargando asignaturas:', err));
   }, []);
 
-  // Usa el endpoint que ya existía /api/activities/
-  // y filtra + ordena en el frontend
   const cargarActividades = useCallback(() => {
     setCargandoActividades(true);
     fetch(`${API_BASE}/api/activities/`)
@@ -59,11 +55,9 @@ function App() {
       .then(data => {
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
-
         const proximas = data
           .filter(a => new Date(a.due_date + 'T00:00:00') >= hoy)
           .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
-
         setProximasActividades(proximas);
         setCargandoActividades(false);
       })
@@ -77,7 +71,6 @@ function App() {
     cargarActividades();
   }, [cargarActividades]);
 
-  // Al crear actividad, refrescar lista automáticamente
   const handleActividadCreada = () => {
     cargarActividades();
     setMostrarFormulario(false);
@@ -131,7 +124,6 @@ function App() {
             />
           )}
 
-          {/* Tarjetas estadísticas */}
           <div className="estadisticas">
             <div className="tarjeta">
               <span className="tarjeta-label">Asignaturas Activas</span>
@@ -178,7 +170,12 @@ function App() {
                   const dias = diasRestantes(actividad.due_date);
 
                   return (
-                    <div key={actividad.id} className="actividad-fila">
+                    <div
+                      key={actividad.id}
+                      className="actividad-fila clickeable"
+                      onClick={() => setActividadSeleccionada(actividad)}
+                      title="Ver detalle y subtareas"
+                    >
                       <div className="actividad-izq">
                         <span className={`dias-badge ${dias.clase}`}>{dias.texto}</span>
                         <span className="fecha-vence">
@@ -203,6 +200,7 @@ function App() {
                       <div className="actividad-badges">
                         <span className={`badge ${tipo.clase}`}>{tipo.label}</span>
                         {dif && <span className={`badge-dif ${dif.clase}`}>{dif.label}</span>}
+                        <span className="ver-detalle">Ver →</span>
                       </div>
                     </div>
                   );
@@ -244,6 +242,14 @@ function App() {
             )}
           </div>
         </main>
+      )}
+
+      {/* ================= MODAL DETALLE ACTIVIDAD ================= */}
+      {actividadSeleccionada && (
+        <ActivityDetail
+          actividad={actividadSeleccionada}
+          onClose={() => setActividadSeleccionada(null)}
+        />
       )}
     </div>
   );
