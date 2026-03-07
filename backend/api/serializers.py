@@ -55,7 +55,7 @@ class ActivitySerializer(serializers.ModelSerializer):
 
         if len(value.strip()) < 3:
             raise serializers.ValidationError(
-                "La descripción debe tener al menos 3 caracteres."
+                "La descripción debe tener al menos 3 caracteres.."
             )
 
         return value
