@@ -1,36 +1,96 @@
 // ============================================================
 // App.js - Dashboard Académico Moderno
 // ============================================================
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import CreateActivity from './CreateActivity';
 
-function App() {
+const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
 
+// Mapeo de tipos de actividad
+const TIPO_CONFIG = {
+  exam:         { label: 'Examen',       clase: 'badge-exam' },
+  project:      { label: 'Proyecto',     clase: 'badge-project' },
+  presentation: { label: 'Presentación', clase: 'badge-presentation' },
+  homework:     { label: 'Tarea',        clase: 'badge-homework' },
+};
+
+// Mapeo de dificultad
+const DIFICULTAD_CONFIG = {
+  baja:    { label: 'Baja',    clase: 'dif-baja' },
+  media:   { label: 'Media',   clase: 'dif-media' },
+  alta:    { label: 'Alta',    clase: 'dif-alta' },
+  critica: { label: 'Crítica', clase: 'dif-critica' },
+};
+
+// Cuántos días faltan para una fecha
+function diasRestantes(fechaStr) {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const fecha = new Date(fechaStr + 'T00:00:00');
+  const diff = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return { texto: 'Hoy',             clase: 'dias-hoy' };
+  if (diff === 1) return { texto: 'Mañana',          clase: 'dias-pronto' };
+  if (diff <= 3)  return { texto: `En ${diff} días`, clase: 'dias-pronto' };
+  return           { texto: `En ${diff} días`,       clase: 'dias-normal' };
+}
+
+function App() {
   const [tabActiva, setTabActiva] = useState('hoy');
   const [asignaturas, setAsignaturas] = useState([]);
+  const [proximasActividades, setProximasActividades] = useState([]);
+  const [cargandoActividades, setCargandoActividades] = useState(true);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
 
-  // 🔌 Conexión con Django
- useEffect(() => {
-  fetch("https://miniproyecto-1-zfn4.onrender.com/api/asignaturas/")
-    .then(res => res.json())
-    .then(data => {
-      console.log("DATOS QUE LLEGAN:", data);
-      setAsignaturas(data);
-    })
-    .catch(error => console.error("Error:", error));
-}, []);
+  // Cargar asignaturas
+  useEffect(() => {
+    fetch(`${API_BASE}/api/asignaturas/`)
+      .then(res => res.json())
+      .then(data => setAsignaturas(data))
+      .catch(err => console.error('Error cargando asignaturas:', err));
+  }, []);
+
+  // Usa el endpoint que ya existía /api/activities/
+  // y filtra + ordena en el frontend
+  const cargarActividades = useCallback(() => {
+    setCargandoActividades(true);
+    fetch(`${API_BASE}/api/activities/`)
+      .then(res => res.json())
+      .then(data => {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+
+        const proximas = data
+          .filter(a => new Date(a.due_date + 'T00:00:00') >= hoy)
+          .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+
+        setProximasActividades(proximas);
+        setCargandoActividades(false);
+      })
+      .catch(err => {
+        console.error('Error cargando actividades:', err);
+        setCargandoActividades(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    cargarActividades();
+  }, [cargarActividades]);
+
+  // Al crear actividad, refrescar lista automáticamente
+  const handleActividadCreada = () => {
+    cargarActividades();
+    setMostrarFormulario(false);
+  };
+
   return (
     <div className="app">
-
       {/* ================= CABECERA ================= */}
       <header className="cabecera">
         <div className="cabecera-titulo">
           <span className="icono-cabecera">📅</span>
           <h1>Gestión de Actividades Evaluativas</h1>
         </div>
-
         <nav className="tabs">
           <button
             className={tabActiva === 'hoy' ? 'tab activa' : 'tab'}
@@ -38,33 +98,23 @@ function App() {
           >
             Hoy
           </button>
-
           <button
             className={tabActiva === 'asignaturas' ? 'tab activa' : 'tab'}
             onClick={() => setTabActiva('asignaturas')}
           >
             Asignaturas
           </button>
-
-          <button className="tab">
-            Actividades (Coming Soon)
-          </button>
-
-          <button className="tab">
-            Avance (Coming Soon)
-          </button>
+          <button className="tab">Actividades (Coming Soon)</button>
+          <button className="tab">Avance (Coming Soon)</button>
         </nav>
       </header>
 
       {/* ================= PANEL HOY ================= */}
       {tabActiva === 'hoy' && (
         <main className="contenido">
-
           <div className="panel-titulo">
             <h2>Panel General</h2>
-            <span className="fecha">
-              {new Date().toLocaleDateString()}
-            </span>
+            <span className="fecha">{new Date().toLocaleDateString()}</span>
           </div>
 
           <button
@@ -77,83 +127,100 @@ function App() {
           {mostrarFormulario && (
             <CreateActivity
               onClose={() => setMostrarFormulario(false)}
-              onActivityCreated={() => {
-                console.log('Actividad creada');
-              }}
+              onActivityCreated={handleActividadCreada}
             />
           )}
 
+          {/* Tarjetas estadísticas */}
           <div className="estadisticas">
-
             <div className="tarjeta">
               <span className="tarjeta-label">Asignaturas Activas</span>
-              <span className="tarjeta-numero azul">
-                {asignaturas.length}
-              </span>
-              <span className="tarjeta-descripcion">
-                registradas en el sistema
-              </span>
+              <span className="tarjeta-numero azul">{asignaturas.length}</span>
+              <span className="tarjeta-descripcion">registradas en el sistema</span>
             </div>
-
             <div className="tarjeta">
               <span className="tarjeta-label">Carga Semanal</span>
-              <span className="tarjeta-numero morado">
-                —
-              </span>
-              <span className="tarjeta-descripcion">
-                Coming Soon
-              </span>
+              <span className="tarjeta-numero morado">—</span>
+              <span className="tarjeta-descripcion">Coming Soon</span>
             </div>
-
             <div className="tarjeta">
               <span className="tarjeta-label">Conflictos</span>
-              <span className="tarjeta-numero naranja">
-                —
-              </span>
-              <span className="tarjeta-descripcion">
-                Coming Soon
-              </span>
+              <span className="tarjeta-numero naranja">—</span>
+              <span className="tarjeta-descripcion">Coming Soon</span>
             </div>
-
             <div className="tarjeta">
               <span className="tarjeta-label">Progreso General</span>
-              <span className="tarjeta-numero rojo">
-                —
-              </span>
-              <span className="tarjeta-descripcion">
-                Coming Soon
-              </span>
+              <span className="tarjeta-numero rojo">—</span>
+              <span className="tarjeta-descripcion">Coming Soon</span>
             </div>
-
           </div>
 
+          {/* ===== PRÓXIMAS ACTIVIDADES ===== */}
           <div className="seccion">
-            <h3 className="seccion-titulo">
-              Próximas Actividades
-            </h3>
+            <h3 className="seccion-titulo">Próximas Actividades</h3>
 
-            <div className="vacio">
-              <div className="check-verde">✓</div>
-              <p>Módulo de actividades en desarrollo</p>
-            </div>
+            {cargandoActividades ? (
+              <div className="vacio">
+                <div className="spinner"></div>
+                <p>Cargando actividades...</p>
+              </div>
+            ) : proximasActividades.length === 0 ? (
+              <div className="vacio">
+                <div className="check-verde">✓</div>
+                <p>No hay actividades próximas</p>
+                <p className="vacio-sub">Crea una nueva actividad para verla aquí</p>
+              </div>
+            ) : (
+              <div className="lista-actividades">
+                {proximasActividades.map(actividad => {
+                  const tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
+                  const dif  = DIFICULTAD_CONFIG[actividad.difficulty] || null;
+                  const dias = diasRestantes(actividad.due_date);
+
+                  return (
+                    <div key={actividad.id} className="actividad-fila">
+                      <div className="actividad-izq">
+                        <span className={`dias-badge ${dias.clase}`}>{dias.texto}</span>
+                        <span className="fecha-vence">
+                          {new Date(actividad.due_date + 'T00:00:00').toLocaleDateString('es-ES', {
+                            day: '2-digit', month: 'short'
+                          })}
+                        </span>
+                      </div>
+
+                      <div className="actividad-info">
+                        <span className="actividad-nombre">{actividad.title}</span>
+                        {actividad.description && (
+                          <span className="actividad-fecha">{actividad.description}</span>
+                        )}
+                        {actividad.start_date && (
+                          <span className="actividad-fecha">
+                            Inicio: {new Date(actividad.start_date + 'T00:00:00').toLocaleDateString('es-ES')}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="actividad-badges">
+                        <span className={`badge ${tipo.clase}`}>{tipo.label}</span>
+                        {dif && <span className={`badge-dif ${dif.clase}`}>{dif.label}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-
         </main>
       )}
 
       {/* ================= ASIGNATURAS ================= */}
       {tabActiva === 'asignaturas' && (
         <main className="contenido">
-
           <div className="panel-titulo">
             <h2>Asignaturas Registradas</h2>
-            <span className="fecha">
-              Gestión académica actual
-            </span>
+            <span className="fecha">Gestión académica actual</span>
           </div>
-
           <div className="seccion">
-
             {asignaturas.length === 0 ? (
               <div className="vacio">
                 <div className="check-verde">✓</div>
@@ -161,39 +228,23 @@ function App() {
               </div>
             ) : (
               <div className="lista-actividades">
-
                 {asignaturas.map(asignatura => (
                   <div key={asignatura.id} className="actividad-fila">
-
                     <div className="actividad-info">
                       <span className="actividad-nombre">
                         {asignatura.codigo} - {asignatura.nombre}
                       </span>
-
-                      <span className="actividad-fecha">
-                        Créditos: {asignatura.creditos}
-                      </span>
-
-                      <span className="actividad-fecha">
-                        {asignatura.descripcion}
-                      </span>
+                      <span className="actividad-fecha">Créditos: {asignatura.creditos}</span>
+                      <span className="actividad-fecha">{asignatura.descripcion}</span>
                     </div>
-
-                    <span className="badge badge-project">
-                      Activa
-                    </span>
-
+                    <span className="badge badge-project">Activa</span>
                   </div>
                 ))}
-
               </div>
             )}
-
           </div>
-
         </main>
       )}
-
     </div>
   );
 }
