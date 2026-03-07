@@ -13,6 +13,14 @@ class SubtaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subtask
         fields = '__all__'
+    
+    # Validación del título
+    def validate_title(self, value):
+        if len(value.strip()) < 3:
+            raise serializers.ValidationError(
+                "El título debe tener al menos 3 caracteres."
+            )
+        return value
 
 
 # Serializador de Actividades
