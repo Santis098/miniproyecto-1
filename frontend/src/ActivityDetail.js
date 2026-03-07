@@ -39,7 +39,7 @@ function ActivityDetail({ actividad, onClose }) {
         setErrorCarga(true);
         setCargando(false);
       });
-  }, [actividad.id]);
+  }, [actividad?.id]);
 
   if (!actividad) return null;
 
