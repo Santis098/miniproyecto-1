@@ -103,6 +103,7 @@ AUTH_USER_MODEL = 'api.Usuario'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://localhost:3000",
+    "https://miniproyecto-1-zfn4.onrender.com",
 ]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
