@@ -245,12 +245,12 @@ function App() {
       )}
 
       {/* ================= MODAL DETALLE ACTIVIDAD ================= */}
-      {actividadSeleccionada && (
-        <ActivityDetail
-          actividad={actividadSeleccionada}
-          onClose={() => setActividadSeleccionada(null)}
-        />
-      )}
+      {actividadSeleccionada?.id && (
+      <ActivityDetail
+      actividad={actividadSeleccionada}
+      onClose={() => setActividadSeleccionada(null)}
+    />
+  )}
     </div>
   );
 }
