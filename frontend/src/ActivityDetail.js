@@ -24,22 +24,40 @@ function ActivityDetail({ actividad, onClose }) {
   const [errorCarga, setErrorCarga] = useState(false);
 
   useEffect(() => {
-    if (!actividad || !actividad.id) {
-      setCargando(false);
-      return;
-    }
-    fetch(API_BASE + '/api/subtasks/')
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        var propias = data.filter(function(st) { return st.activity === actividad.id; });
-        setSubtasks(propias);
-        setCargando(false);
-      })
-      .catch(function() {
-        setErrorCarga(true);
-        setCargando(false);
+  console.log("Actividad recibida:", actividad);
+
+  if (!actividad || !actividad.id) {
+    console.log("No hay actividad válida");
+    setCargando(false);
+    return;
+  }
+
+  console.log("Llamando API:", API_BASE + "/api/subtasks/");
+
+  fetch(API_BASE + '/api/subtasks/')
+    .then(function(res) {
+      console.log("Status respuesta:", res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      console.log("Subtasks recibidas:", data);
+
+      var propias = data.filter(function(st) {
+        return st.activity === actividad.id;
       });
-  }, [actividad?.id]);
+
+      console.log("Subtasks filtradas:", propias);
+
+      setSubtasks(propias);
+      setCargando(false);
+    })
+    .catch(function(err) {
+      console.error("Error cargando subtasks:", err);
+      setErrorCarga(true);
+      setCargando(false);
+    });
+
+}, [actividad]);
 
   if (!actividad) return null;
 
