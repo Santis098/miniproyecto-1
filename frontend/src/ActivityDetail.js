@@ -73,7 +73,14 @@ function ActivityDetail({ actividad, onClose }) {
   const dif = actividad.difficulty ? (DIFICULTAD_CONFIG[actividad.difficulty] || null) : null;
 
   return (
-    <div className="ad-overlay" onClick={onClose}>
+    <div
+  className="ad-overlay"
+  onClick={(e) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  }}
+>
       <div className="ad-modal" onClick={(e) => e.stopPropagation()}>
 
         <div className="ad-header">

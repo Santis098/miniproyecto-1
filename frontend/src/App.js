@@ -178,7 +178,11 @@ function App() {
                       className="actividad-fila clickeable"
                       onClick={() => {
   console.log("Actividad clickeada:", actividad);
-  setActividadSeleccionada(actividad);
+
+  // rompe el mismo evento click que cierra el modal
+  setTimeout(() => {
+    setActividadSeleccionada(actividad);
+  }, 0);
 }}
                       title="Ver detalle y subtareas"
                     >
