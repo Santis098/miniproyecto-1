@@ -21,6 +21,7 @@ class ActivitySerializer(serializers.ModelSerializer):
 
     title = serializers.CharField(required=True)
     due_date = serializers.DateField(required=True)
+    description = serializers.CharField(required=True)   # ahora es obligatoria
 
     class Meta:
         model = Activity
@@ -48,3 +49,13 @@ class ActivitySerializer(serializers.ModelSerializer):
             Subtask.objects.create(activity=activity, **subtask_data)
         
         return activity
+
+    # Validación de la descripción
+    def validate_description(self, value):
+
+        if len(value.strip()) < 3:
+            raise serializers.ValidationError(
+                "La descripción debe tener al menos 3 caracteres."
+            )
+
+        return value
