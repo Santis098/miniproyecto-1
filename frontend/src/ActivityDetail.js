@@ -18,11 +18,18 @@ function ActivityDetail({ actividad, onClose }) {
 
     setLoading(true);
 
-    fetch(`${API_BASE}/api/subtasks/?activity=${actividad.id}`)
+    fetch(`${API_BASE}/api/subtasks/`)
       .then(res => res.json())
       .then(data => {
-        setSubtasks(data);
+
+        // FILTRAR SOLO LAS DE ESTA ACTIVIDAD
+        const filtradas = data.filter(
+          st => st.activity === actividad.id
+        );
+
+        setSubtasks(filtradas);
         setLoading(false);
+
       })
       .catch(err => {
         console.error(err);
@@ -62,7 +69,7 @@ function ActivityDetail({ actividad, onClose }) {
         setNuevoTitulo("");
         setMostrarInput(false);
 
-        cargarSubtasks(); // refrescar lista
+        cargarSubtasks();
 
       }
 
