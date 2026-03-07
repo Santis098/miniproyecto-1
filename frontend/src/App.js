@@ -173,7 +173,10 @@ function App() {
                     <div
                       key={actividad.id}
                       className="actividad-fila clickeable"
-                      onClick={() => setActividadSeleccionada(actividad)}
+                      onClick={() => {
+  console.log("Actividad clickeada:", actividad);
+  setActividadSeleccionada(actividad);
+}}
                       title="Ver detalle y subtareas"
                     >
                       <div className="actividad-izq">
