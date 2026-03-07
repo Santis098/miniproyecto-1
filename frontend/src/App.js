@@ -165,7 +165,10 @@ function App() {
             ) : (
               <div className="lista-actividades">
                 {proximasActividades.map(actividad => {
-                  const tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
+                  const tipo = TIPO_CONFIG[actividad.activity_type] || {
+  label: actividad.activity_type,
+  clase: 'badge-project'
+};
                   const dif  = DIFICULTAD_CONFIG[actividad.difficulty] || null;
                   const dias = diasRestantes(actividad.due_date);
 
