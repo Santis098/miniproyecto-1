@@ -4,12 +4,14 @@ import "./ActivityDetail.css";
 const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-zfn4.onrender.com";
 
 function ActivityDetail({ actividad, onClose }) {
-  const [subtasks, setSubtasks]           = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [mostrarInput, setMostrarInput]   = useState(false);
-  const [nuevoTitulo, setNuevoTitulo]     = useState("");
-  const [editandoId, setEditandoId]       = useState(null);
-  const [editandoTitulo, setEditandoTitulo] = useState("");
+  const [subtasks, setSubtasks]                   = useState([]);
+  const [loading, setLoading]                     = useState(true);
+  const [mostrarInput, setMostrarInput]           = useState(false);
+  const [nuevoTitulo, setNuevoTitulo]             = useState("");
+  const [errorNuevo, setErrorNuevo]               = useState("");
+  const [editandoId, setEditandoId]               = useState(null);
+  const [editandoTitulo, setEditandoTitulo]       = useState("");
+  const [errorEdicion, setErrorEdicion]           = useState("");
   const [confirmarEliminar, setConfirmarEliminar] = useState(null);
 
   const cargarSubtasks = () => {
@@ -26,18 +28,32 @@ function ActivityDetail({ actividad, onClose }) {
 
   useEffect(() => { cargarSubtasks(); }, [actividad]);
 
+  // ================= CREAR SUBTAREA =================
   const crearSubtask = async () => {
-    if (!nuevoTitulo.trim()) return;
+    if (!nuevoTitulo.trim()) {
+      setErrorNuevo("Debe ingresar un titulo para la subtarea.");
+      return;
+    }
+    if (nuevoTitulo.trim().length < 3) {
+      setErrorNuevo("El titulo debe tener al menos 3 caracteres.");
+      return;
+    }
+    setErrorNuevo("");
     try {
       const res = await fetch(`${API_BASE}/api/subtasks/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: nuevoTitulo, activity: actividad.id })
       });
-      if (res.status === 201) { setNuevoTitulo(""); setMostrarInput(false); cargarSubtasks(); }
+      if (res.status === 201) {
+        setNuevoTitulo("");
+        setMostrarInput(false);
+        cargarSubtasks();
+      }
     } catch (err) { console.error(err); }
   };
 
+  // ================= MARCAR COMPLETADA =================
   const toggleSubtask = async (st) => {
     try {
       await fetch(`${API_BASE}/api/subtasks/${st.id}/`, {
@@ -49,6 +65,7 @@ function ActivityDetail({ actividad, onClose }) {
     } catch (err) { console.error(err); }
   };
 
+  // ================= ELIMINAR SUBTAREA =================
   const confirmarYEliminar = async () => {
     if (!confirmarEliminar) return;
     try {
@@ -58,11 +75,29 @@ function ActivityDetail({ actividad, onClose }) {
     } catch (err) { console.error(err); }
   };
 
-  const iniciarEdicion = (st) => { setEditandoId(st.id); setEditandoTitulo(st.title); };
-  const cancelarEdicion = () => { setEditandoId(null); setEditandoTitulo(""); };
+  // ================= EDITAR SUBTAREA =================
+  const iniciarEdicion = (st) => {
+    setEditandoId(st.id);
+    setEditandoTitulo(st.title);
+    setErrorEdicion("");
+  };
+
+  const cancelarEdicion = () => {
+    setEditandoId(null);
+    setEditandoTitulo("");
+    setErrorEdicion("");
+  };
 
   const guardarEdicion = async (id) => {
-    if (!editandoTitulo.trim()) return;
+    if (!editandoTitulo.trim()) {
+      setErrorEdicion("Debe ingresar un titulo para la subtarea.");
+      return;
+    }
+    if (editandoTitulo.trim().length < 3) {
+      setErrorEdicion("El titulo debe tener al menos 3 caracteres.");
+      return;
+    }
+    setErrorEdicion("");
     try {
       await fetch(`${API_BASE}/api/subtasks/${id}/`, {
         method: "PATCH",
@@ -106,16 +141,19 @@ function ActivityDetail({ actividad, onClose }) {
                   </span>
 
                   {editandoId === st.id ? (
-                    <div className="edit-row">
-                      <input
-                        className="edit-input"
-                        value={editandoTitulo}
-                        onChange={e => setEditandoTitulo(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
-                        autoFocus
-                      />
-                      <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)}>Guardar</button>
-                      <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
+                    <div className="edit-col">
+                      <div className="edit-row">
+                        <input
+                          className="edit-input"
+                          value={editandoTitulo}
+                          onChange={e => { setEditandoTitulo(e.target.value); setErrorEdicion(""); }}
+                          onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
+                          autoFocus
+                        />
+                        <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)}>Guardar</button>
+                        <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
+                      </div>
+                      {errorEdicion && <p className="st-error-msg">{errorEdicion}</p>}
                     </div>
                   ) : (
                     <span className="st-titulo-texto">{st.title}</span>
@@ -137,23 +175,25 @@ function ActivityDetail({ actividad, onClose }) {
           )}
 
           {mostrarInput && (
-            <div className="subtask-input">
-              <input
-                type="text"
-                placeholder="Ej: estudiar derivadas"
-                value={nuevoTitulo}
-                onChange={e => setNuevoTitulo(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") crearSubtask(); }}
-                autoFocus
-              />
-              <button onClick={crearSubtask}>Guardar</button>
-              <button onClick={() => { setMostrarInput(false); setNuevoTitulo(""); }}>Cancelar</button>
+            <div className="subtask-add-col">
+              <div className="subtask-input">
+                <input
+                  type="text"
+                  placeholder="Ej: estudiar derivadas"
+                  value={nuevoTitulo}
+                  onChange={e => { setNuevoTitulo(e.target.value); setErrorNuevo(""); }}
+                  onKeyDown={e => { if (e.key === "Enter") crearSubtask(); }}
+                  autoFocus
+                />
+                <button onClick={crearSubtask}>Guardar</button>
+                <button onClick={() => { setMostrarInput(false); setNuevoTitulo(""); setErrorNuevo(""); }}>Cancelar</button>
+              </div>
+              {errorNuevo && <p className="st-error-msg">{errorNuevo}</p>}
             </div>
           )}
         </div>
       </div>
 
-      {/* MODAL CONFIRMAR ELIMINAR SUBTAREA — fuera del detail-overlay para que se vea encima */}
       {confirmarEliminar && (
         <div className="confirm-overlay">
           <div className="confirm-modal">
