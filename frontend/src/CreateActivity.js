@@ -4,29 +4,47 @@ import './CreateActivity.css';
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
 
 function CreateActivity({ onClose, onActivityCreated }) {
-  const [titulo, setTitulo] = useState('');
+  const [titulo, setTitulo]           = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
-  const [tipo, setTipo] = useState('exam');
-  const [dificultad, setDificultad] = useState('media');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [fechaFin, setFechaFin]       = useState('');
+  const [tipo, setTipo]               = useState('exam');
+  const [dificultad, setDificultad]   = useState('media');
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [success, setSuccess]         = useState(false);
 
   const fechaHoy = new Date().toLocaleDateString('es-ES', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
 
   const manejarEnvio = async () => {
-    if (!titulo || !descripcion || !fechaInicio || !fechaFin) {
-      setError('Por favor completa todos los campos.');
+    // ===== VALIDACIONES FRONTEND CON MENSAJES ESPECIFICOS =====
+    if (!titulo.trim()) {
+      setError('Debe ingresar un titulo para la actividad.');
+      return;
+    }
+    if (titulo.trim().length < 3) {
+      setError('El titulo debe tener al menos 3 caracteres.');
+      return;
+    }
+    if (!descripcion.trim()) {
+      setError('Debe ingresar una descripcion para la actividad.');
+      return;
+    }
+    if (!fechaInicio) {
+      setError('Debe seleccionar una fecha de inicio.');
+      return;
+    }
+    if (!fechaFin) {
+      setError('Debe seleccionar una fecha de cierre.');
       return;
     }
     if (fechaFin < fechaInicio) {
-      setError('La fecha de cierre no puede ser antes de la fecha de inicio.');
+      setError('La fecha de cierre no puede ser anterior a la fecha de inicio.');
       return;
     }
+
     setError('');
     setLoading(true);
 
@@ -54,8 +72,17 @@ function CreateActivity({ onClose, onActivityCreated }) {
           if (onClose) onClose();
         }, 2000);
       } else if (respuesta.status === 400) {
+        // ===== MENSAJES ESPECIFICOS DEL BACKEND =====
         const datos = await respuesta.json();
-        setError(datos.message || 'Datos incorrectos. Verifica el formulario.');
+        if (datos.title) {
+          setError('Titulo: ' + datos.title[0]);
+        } else if (datos.due_date) {
+          setError('Fecha de cierre: ' + datos.due_date[0]);
+        } else if (datos.non_field_errors) {
+          setError(datos.non_field_errors[0]);
+        } else {
+          setError('Datos incorrectos. Verifica el formulario.');
+        }
         setLoading(false);
       } else {
         setError('Error del servidor. Intenta de nuevo mas tarde.');
@@ -64,17 +91,15 @@ function CreateActivity({ onClose, onActivityCreated }) {
     } catch (err) {
       setSuccess(true);
       setLoading(false);
-      setTimeout(() => {
-        if (onClose) onClose();
-      }, 2000);
+      setTimeout(() => { if (onClose) onClose(); }, 2000);
     }
   };
 
   const infoDificultad = {
-    baja:    { emoji: '🟢', texto: 'Baja - Poca preparacion necesaria' },
-    media:   { emoji: '🟡', texto: 'Media - Requiere preparacion moderada' },
-    alta:    { emoji: '🟠', texto: 'Alta - Requiere bastante preparacion' },
-    critica: { emoji: '🔴', texto: 'Critica - Maxima prioridad' },
+    baja:    { emoji: '', texto: 'Baja - Poca preparacion necesaria' },
+    media:   { emoji: '', texto: 'Media - Requiere preparacion moderada' },
+    alta:    { emoji: '', texto: 'Alta - Requiere bastante preparacion' },
+    critica: { emoji: '', texto: 'Critica - Maxima prioridad' },
   };
 
   return (
@@ -169,28 +194,18 @@ function CreateActivity({ onClose, onActivityCreated }) {
                     onClick={() => setDificultad(nivel)}
                     type="button"
                   >
-                    {infoDificultad[nivel].emoji} {nivel.charAt(0).toUpperCase() + nivel.slice(1)}
+                    {nivel.charAt(0).toUpperCase() + nivel.slice(1)}
                   </button>
                 ))}
               </div>
-              <p className="ca-dificultad-desc">
-                {infoDificultad[dificultad].texto}
-              </p>
+              <p className="ca-dificultad-desc">{infoDificultad[dificultad].texto}</p>
             </div>
 
             <div className="ca-botones">
-              <button
-                className="ca-btn-cancelar"
-                onClick={onClose}
-                disabled={loading}
-              >
+              <button className="ca-btn-cancelar" onClick={onClose} disabled={loading}>
                 Cancelar
               </button>
-              <button
-                className="ca-btn-guardar"
-                onClick={manejarEnvio}
-                disabled={loading}
-              >
+              <button className="ca-btn-guardar" onClick={manejarEnvio} disabled={loading}>
                 {loading ? 'Guardando...' : 'Guardar actividad'}
               </button>
             </div>
