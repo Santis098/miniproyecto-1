@@ -65,7 +65,7 @@ function ActivityDetail({ actividad, onClose }) {
         setCargando(false);
       });
 
-  }, [actividad]);
+  }, [actividad?.id]);
 
   if (!actividad) return null;
 

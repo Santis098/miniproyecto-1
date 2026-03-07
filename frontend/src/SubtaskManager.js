@@ -4,6 +4,9 @@ import './SubtaskManager.css';
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
 
 function SubtaskManager({ activityId, subtasks, onSubtaskAdded }) {
+
+  console.log("Subtasks en SubtaskManager:", subtasks);
+  
   const [titulo, setTitulo] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
