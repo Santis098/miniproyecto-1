@@ -41,7 +41,7 @@ class ActivitySerializer(serializers.ModelSerializer):
         raise serializers.ValidationError(
             "La fecha de inicio no puede ser anterior a la fecha actual."
         )
-    return value
+        return value
 
     # Validación personalizada del título
     def validate_title(self, value):
@@ -75,19 +75,19 @@ class ActivitySerializer(serializers.ModelSerializer):
         opciones = ["baja", "media", "alta", "critica"]
 
         if value.lower() not in opciones:
-        raise serializers.ValidationError(
+            raise serializers.ValidationError(
             "La dificultad debe ser: baja, media, alta o critica."
         )
 
-    return value
+        return value
 
     def validate_activity_type(self, value):
 
         tipos = ["exam", "project", "presentation", "homework"]
 
         if value.lower() not in tipos:
-        raise serializers.ValidationError(
+            raise serializers.ValidationError(
             "El tipo de actividad debe ser: exam, project, presentation o homework."
         )
 
-    return value
+        return value
