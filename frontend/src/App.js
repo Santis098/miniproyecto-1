@@ -180,39 +180,6 @@ function App() {
           )}
 
 
-          {/* ================= ESTADISTICAS ================= */}
-
-          <div className="estadisticas">
-
-            <div className="tarjeta">
-              <span className="tarjeta-label">Asignaturas Activas</span>
-              <span className="tarjeta-numero azul">{asignaturas.length}</span>
-              <span className="tarjeta-descripcion">
-                registradas en el sistema
-              </span>
-            </div>
-
-            <div className="tarjeta">
-              <span className="tarjeta-label">Carga Semanal</span>
-              <span className="tarjeta-numero morado">—</span>
-              <span className="tarjeta-descripcion">Coming Soon</span>
-            </div>
-
-            <div className="tarjeta">
-              <span className="tarjeta-label">Conflictos</span>
-              <span className="tarjeta-numero naranja">—</span>
-              <span className="tarjeta-descripcion">Coming Soon</span>
-            </div>
-
-            <div className="tarjeta">
-              <span className="tarjeta-label">Progreso General</span>
-              <span className="tarjeta-numero rojo">—</span>
-              <span className="tarjeta-descripcion">Coming Soon</span>
-            </div>
-
-          </div>
-
-
           {/* ================= PRÓXIMAS ACTIVIDADES ================= */}
 
           <div className="seccion">
@@ -228,16 +195,6 @@ function App() {
                 <p>Cargando actividades...</p>
               </div>
 
-            ) : proximasActividades.length === 0 ? (
-
-              <div className="vacio">
-                <div className="check-verde">✓</div>
-                <p>No hay actividades próximas</p>
-                <p className="vacio-sub">
-                  Crea una nueva actividad para verla aquí
-                </p>
-              </div>
-
             ) : (
 
               <div className="lista-actividades">
@@ -250,7 +207,6 @@ function App() {
                   };
 
                   const dif = DIFICULTAD_CONFIG[actividad.difficulty] || null;
-
                   const dias = diasRestantes(actividad.due_date);
 
                   return (
@@ -260,13 +216,8 @@ function App() {
                       className="actividad-fila clickeable"
                       title="Ver detalle y subtareas"
                       onClick={() => {
-
                         console.log("Actividad clickeada:", actividad);
-
-                        setTimeout(() => {
-                          setActividadSeleccionada(actividad);
-                        }, 0);
-
+                        setActividadSeleccionada(actividad);
                       }}
                     >
 
@@ -277,14 +228,12 @@ function App() {
                         </span>
 
                         <span className="fecha-vence">
-
                           {new Date(
                             actividad.due_date + 'T00:00:00'
                           ).toLocaleDateString('es-ES', {
                             day: '2-digit',
                             month: 'short'
                           })}
-
                         </span>
 
                       </div>
@@ -299,16 +248,6 @@ function App() {
                         {actividad.description && (
                           <span className="actividad-fecha">
                             {actividad.description}
-                          </span>
-                        )}
-
-                        {actividad.start_date && (
-                          <span className="actividad-fecha">
-                            Inicio: {
-                              new Date(
-                                actividad.start_date + 'T00:00:00'
-                              ).toLocaleDateString('es-ES')
-                            }
                           </span>
                         )}
 
@@ -350,74 +289,9 @@ function App() {
       )}
 
 
-      {/* ================= ASIGNATURAS ================= */}
-
-      {tabActiva === 'asignaturas' && (
-
-        <main className="contenido">
-
-          <div className="panel-titulo">
-            <h2>Asignaturas Registradas</h2>
-            <span className="fecha">
-              Gestión académica actual
-            </span>
-          </div>
-
-          <div className="seccion">
-
-            {asignaturas.length === 0 ? (
-
-              <div className="vacio">
-                <div className="check-verde">✓</div>
-                <p>No hay asignaturas registradas</p>
-              </div>
-
-            ) : (
-
-              <div className="lista-actividades">
-
-                {asignaturas.map(asignatura => (
-
-                  <div key={asignatura.id} className="actividad-fila">
-
-                    <div className="actividad-info">
-
-                      <span className="actividad-nombre">
-                        {asignatura.codigo} - {asignatura.nombre}
-                      </span>
-
-                      <span className="actividad-fecha">
-                        Créditos: {asignatura.creditos}
-                      </span>
-
-                      <span className="actividad-fecha">
-                        {asignatura.descripcion}
-                      </span>
-
-                    </div>
-
-                    <span className="badge badge-project">
-                      Activa
-                    </span>
-
-                  </div>
-
-                ))}
-
-              </div>
-
-            )}
-
-          </div>
-
-        </main>
-
-      )}
-
-
       {/* ================= MODAL DETALLE ================= */}
 
-      {actividadSeleccionada?.id && (
+      {actividadSeleccionada && (
 
         <ActivityDetail
           actividad={actividadSeleccionada}
