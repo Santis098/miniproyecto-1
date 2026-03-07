@@ -8,7 +8,11 @@ function ActivityDetail({ actividad, onClose }) {
   const [subtasks, setSubtasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const [mostrarInput, setMostrarInput] = useState(false);
+  const [nuevoTitulo, setNuevoTitulo] = useState("");
+
+  // ================= CARGAR SUBTAREAS =================
+  const cargarSubtasks = () => {
 
     if (!actividad) return;
 
@@ -25,7 +29,75 @@ function ActivityDetail({ actividad, onClose }) {
         setLoading(false);
       });
 
+  };
+
+  useEffect(() => {
+    cargarSubtasks();
   }, [actividad]);
+
+
+
+  // ================= CREAR SUBTAREA =================
+  const crearSubtask = async () => {
+
+    if (!nuevoTitulo.trim()) return;
+
+    const nueva = {
+      title: nuevoTitulo,
+      activity: actividad.id
+    };
+
+    try {
+
+      const res = await fetch(`${API_BASE}/api/subtasks/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(nueva)
+      });
+
+      if (res.status === 201) {
+
+        setNuevoTitulo("");
+        setMostrarInput(false);
+
+        cargarSubtasks(); // refrescar lista
+
+      }
+
+    } catch (err) {
+      console.error(err);
+    }
+
+  };
+
+
+
+  // ================= MARCAR COMPLETADA =================
+  const toggleSubtask = async (st) => {
+
+    try {
+
+      await fetch(`${API_BASE}/api/subtasks/${st.id}/`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          is_completed: !st.is_completed
+        })
+      });
+
+      cargarSubtasks();
+
+    } catch (err) {
+      console.error(err);
+    }
+
+  };
+
+
 
   return (
 
@@ -38,16 +110,18 @@ function ActivityDetail({ actividad, onClose }) {
           <h2>{actividad.title}</h2>
 
           <button onClick={onClose}>
-            X
+            ✕
           </button>
 
         </div>
+
 
         {actividad.description && (
           <p className="detail-description">
             {actividad.description}
           </p>
         )}
+
 
         <div className="detail-info">
 
@@ -63,7 +137,10 @@ function ActivityDetail({ actividad, onClose }) {
 
         </div>
 
+
+
         <h3>Subtareas</h3>
+
 
         {loading ? (
 
@@ -79,9 +156,13 @@ function ActivityDetail({ actividad, onClose }) {
 
             {subtasks.map(st => (
 
-              <li key={st.id} className="detail-item">
+              <li
+                key={st.id}
+                className={`detail-item ${st.is_completed ? "done" : ""}`}
+                onClick={() => toggleSubtask(st)}
+              >
 
-                <span>
+                <span className="check">
                   {st.is_completed ? "✅" : "⬜"}
                 </span>
 
@@ -94,6 +175,41 @@ function ActivityDetail({ actividad, onClose }) {
             ))}
 
           </ul>
+
+        )}
+
+
+
+        {/* ================= AÑADIR SUBTAREA ================= */}
+
+        {!mostrarInput && (
+
+          <button
+            className="btn-add-subtask"
+            onClick={() => setMostrarInput(true)}
+          >
+            + Añadir subtarea
+          </button>
+
+        )}
+
+
+        {mostrarInput && (
+
+          <div className="subtask-input">
+
+            <input
+              type="text"
+              placeholder="Ej: estudiar derivadas"
+              value={nuevoTitulo}
+              onChange={(e) => setNuevoTitulo(e.target.value)}
+            />
+
+            <button onClick={crearSubtask}>
+              Guardar
+            </button>
+
+          </div>
 
         )}
 
