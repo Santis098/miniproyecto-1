@@ -5,10 +5,10 @@ import './ActivityDetail.css';
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
 
 const TIPO_CONFIG = {
-  exam:         { label: 'Examen',        clase: 'badge-exam' },
-  project:      { label: 'Proyecto',      clase: 'badge-project' },
-  presentation: { label: 'Presentacion',  clase: 'badge-presentation' },
-  homework:     { label: 'Tarea',         clase: 'badge-homework' },
+  exam:         { label: 'Examen',       clase: 'badge-exam' },
+  project:      { label: 'Proyecto',     clase: 'badge-project' },
+  presentation: { label: 'Presentacion', clase: 'badge-presentation' },
+  homework:     { label: 'Tarea',        clase: 'badge-homework' },
 };
 
 const DIFICULTAD_CONFIG = {
@@ -21,33 +21,39 @@ const DIFICULTAD_CONFIG = {
 function ActivityDetail({ actividad, onClose }) {
   const [subtasks, setSubtasks] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/subtasks/`)
-      .then(res => res.json())
-      .then(data => {
-        const propias = data.filter(st => st.activity === actividad.id);
+    if (!actividad || !actividad.id) {
+      setCargando(false);
+      return;
+    }
+    fetch(API_BASE + '/api/subtasks/')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        var propias = data.filter(function(st) { return st.activity === actividad.id; });
         setSubtasks(propias);
         setCargando(false);
       })
-      .catch(() => setCargando(false));
+      .catch(function() {
+        setError(true);
+        setCargando(false);
+      });
   }, [actividad.id]);
 
-  const handleSubtaskAdded = (nueva) => {
-    setSubtasks(prev => [...prev, nueva]);
-  };
+  if (!actividad) return null;
 
-  const tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
-  const dif  = DIFICULTAD_CONFIG[actividad.difficulty] || null;
+  var tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
+  var dif  = actividad.difficulty ? (DIFICULTAD_CONFIG[actividad.difficulty] || null) : null;
 
   return (
     <div className="ad-overlay" onClick={onClose}>
-      <div className="ad-modal" onClick={e => e.stopPropagation()}>
+      <div className="ad-modal" onClick={function(e) { e.stopPropagation(); }}>
 
         <div className="ad-header">
           <div className="ad-badges">
-            <span className={`badge ${tipo.clase}`}>{tipo.label}</span>
-            {dif && <span className={`badge-dif ${dif.clase}`}>{dif.label}</span>}
+            <span className={'badge ' + tipo.clase}>{tipo.label}</span>
+            {dif && <span className={'badge-dif ' + dif.clase}>{dif.label}</span>}
           </div>
           <button className="ad-cerrar" onClick={onClose}>X</button>
         </div>
@@ -79,13 +85,15 @@ function ActivityDetail({ actividad, onClose }) {
           </div>
         </div>
 
-        {cargando ? (
-          <p className="ad-cargando">Cargando subtareas...</p>
-        ) : (
+        {cargando && <p className="ad-cargando">Cargando subtareas...</p>}
+
+        {error && <p className="ad-cargando">No se pudieron cargar las subtareas.</p>}
+
+        {!cargando && !error && (
           <SubtaskManager
             activityId={actividad.id}
             subtasks={subtasks}
-            onSubtaskAdded={handleSubtaskAdded}
+            onSubtaskAdded={function(nueva) { setSubtasks(function(prev) { return prev.concat([nueva]); }); }}
           />
         )}
 
