@@ -5,7 +5,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import CreateActivity from './CreateActivity';
 import ActivityDetail from './ActivityDetail';
-import AddSubtask from './AddSubtask';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
 
@@ -24,8 +23,9 @@ const DIFICULTAD_CONFIG = {
 };
 
 function diasRestantes(fechaStr) {
+
   const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
+  hoy.setHours(0,0,0,0);
 
   const fecha = new Date(fechaStr + 'T00:00:00');
   const diff = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
@@ -47,19 +47,22 @@ function App() {
   const [cargandoActividades, setCargandoActividades] = useState(true);
 
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
-  const [mostrarSubtarea, setMostrarSubtarea] = useState(false);
 
   const [actividadSeleccionada, setActividadSeleccionada] = useState(null);
 
   // ================= CARGAR ASIGNATURAS =================
+
   useEffect(() => {
+
     fetch(`${API_BASE}/api/asignaturas/`)
       .then(res => res.json())
       .then(data => setAsignaturas(data))
       .catch(err => console.error('Error cargando asignaturas:', err));
+
   }, []);
 
   // ================= CARGAR ACTIVIDADES =================
+
   const cargarActividades = useCallback(() => {
 
     setCargandoActividades(true);
@@ -69,18 +72,21 @@ function App() {
       .then(data => {
 
         const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
+        hoy.setHours(0,0,0,0);
 
         const proximas = data
           .filter(a => new Date(a.due_date + 'T00:00:00') >= hoy)
-          .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+          .sort((a,b) => new Date(a.due_date) - new Date(b.due_date));
 
         setProximasActividades(proximas);
         setCargandoActividades(false);
+
       })
       .catch(err => {
+
         console.error('Error cargando actividades:', err);
         setCargandoActividades(false);
+
       });
 
   }, []);
@@ -90,14 +96,18 @@ function App() {
   }, [cargarActividades]);
 
   const handleActividadCreada = () => {
+
     cargarActividades();
     setMostrarFormulario(false);
+
   };
 
   return (
+
     <div className="app">
 
       {/* ================= CABECERA ================= */}
+
       <header className="cabecera">
 
         <div className="cabecera-titulo">
@@ -130,19 +140,23 @@ function App() {
 
 
       {/* ================= PANEL HOY ================= */}
+
       {tabActiva === 'hoy' && (
 
         <main className="contenido">
 
           <div className="panel-titulo">
+
             <h2>Panel General</h2>
+
             <span className="fecha">
               {new Date().toLocaleDateString()}
             </span>
+
           </div>
 
 
-          {/* BOTONES CREACIÓN */}
+          {/* BOTÓN CREAR ACTIVIDAD */}
 
           <button
             className="btn-nueva-actividad"
@@ -151,32 +165,16 @@ function App() {
             + Nueva Actividad
           </button>
 
-          <button
-            className="btn-nueva-actividad"
-            onClick={() => setMostrarSubtarea(true)}
-          >
-            + Nueva Subtarea
-          </button>
-
 
           {/* MODAL CREAR ACTIVIDAD */}
 
           {mostrarFormulario && (
+
             <CreateActivity
               onClose={() => setMostrarFormulario(false)}
               onActivityCreated={handleActividadCreada}
             />
-          )}
 
-
-          {/* MODAL CREAR SUBTAREA */}
-
-          {mostrarSubtarea && (
-            <AddSubtask
-              actividades={proximasActividades}
-              onClose={() => setMostrarSubtarea(false)}
-              onCreated={() => {}}
-            />
           )}
 
 
@@ -191,8 +189,11 @@ function App() {
             {cargandoActividades ? (
 
               <div className="vacio">
+
                 <div className="spinner"></div>
+
                 <p>Cargando actividades...</p>
+
               </div>
 
             ) : (
@@ -215,10 +216,7 @@ function App() {
                       key={actividad.id}
                       className="actividad-fila clickeable"
                       title="Ver detalle y subtareas"
-                      onClick={() => {
-                        console.log("Actividad clickeada:", actividad);
-                        setActividadSeleccionada(actividad);
-                      }}
+                      onClick={() => setActividadSeleccionada(actividad)}
                     >
 
                       <div className="actividad-izq">
@@ -301,6 +299,7 @@ function App() {
       )}
 
     </div>
+
   );
 
 }
