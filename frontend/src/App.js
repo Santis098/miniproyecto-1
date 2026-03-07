@@ -9,16 +9,18 @@ function App() {
 
   const [tabActiva, setTabActiva] = useState('hoy');
   const [asignaturas, setAsignaturas] = useState([]);
-  const [mostrarFormulario, setMostrarFormulario] = useState(false); // ← NUEVO
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
 
   // 🔌 Conexión con Django
-  useEffect(() => {
-    fetch("https://miniproyecto-1-zfn4.onrender.com/api/asignaturas/")
-      .then(res => res.json())
-      .then(data => setAsignaturas(data))
-      .catch(error => console.error("Error:", error));
-  }, []);
-
+ useEffect(() => {
+  fetch("https://miniproyecto-1-zfn4.onrender.com/api/asignaturas/")
+    .then(res => res.json())
+    .then(data => {
+      console.log("DATOS QUE LLEGAN:", data);
+      setAsignaturas(data);
+    })
+    .catch(error => console.error("Error:", error));
+}, []);
   return (
     <div className="app">
 
@@ -65,7 +67,6 @@ function App() {
             </span>
           </div>
 
-          {/* ← BOTÓN Y FORMULARIO NUEVO */}
           <button
             className="btn-nueva-actividad"
             onClick={() => setMostrarFormulario(true)}
@@ -77,7 +78,6 @@ function App() {
             <CreateActivity
               onClose={() => setMostrarFormulario(false)}
               onActivityCreated={() => {
-                // Aquí después puedes recargar la lista de actividades
                 console.log('Actividad creada');
               }}
             />
@@ -161,6 +161,7 @@ function App() {
               </div>
             ) : (
               <div className="lista-actividades">
+
                 {asignaturas.map(asignatura => (
                   <div key={asignatura.id} className="actividad-fila">
 
@@ -184,6 +185,7 @@ function App() {
 
                   </div>
                 ))}
+
               </div>
             )}
 

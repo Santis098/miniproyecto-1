@@ -39,7 +39,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
     };
 
     try {
-      const respuesta = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/activities/`, {
+      const respuesta = await fetch(`${process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com'}api/activities/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nuevaActividad),
