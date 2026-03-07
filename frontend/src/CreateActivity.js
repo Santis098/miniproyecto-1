@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import './CreateActivity.css';
 
-function CreateActivity({ onClose, onActivityCreated }) {
+const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
 
+function CreateActivity({ onClose, onActivityCreated }) {
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
@@ -39,14 +40,11 @@ function CreateActivity({ onClose, onActivityCreated }) {
     };
 
     try {
-      const respuesta = await fetch(
-  `${process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com/'}api/activities/`,
-  {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(nuevaActividad),
-  }
-);
+      const respuesta = await fetch(API_BASE + '/api/activities/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevaActividad),
+      });
 
       if (respuesta.status === 201) {
         setSuccess(true);
@@ -60,11 +58,10 @@ function CreateActivity({ onClose, onActivityCreated }) {
         setError(datos.message || 'Datos incorrectos. Verifica el formulario.');
         setLoading(false);
       } else {
-        setError('Error del servidor. Intenta de nuevo más tarde.');
+        setError('Error del servidor. Intenta de nuevo mas tarde.');
         setLoading(false);
       }
     } catch (err) {
-      console.log('Backend no disponible, simulando éxito:', err);
       setSuccess(true);
       setLoading(false);
       setTimeout(() => {
@@ -74,54 +71,50 @@ function CreateActivity({ onClose, onActivityCreated }) {
   };
 
   const infoDificultad = {
-    baja:    { emoji: '🟢', texto: 'Baja — Poca preparación necesaria' },
-    media:   { emoji: '🟡', texto: 'Media — Requiere preparación moderada' },
-    alta:    { emoji: '🟠', texto: 'Alta — Requiere bastante preparación' },
-    critica: { emoji: '🔴', texto: 'Crítica — Máxima prioridad' },
+    baja:    { emoji: '🟢', texto: 'Baja - Poca preparacion necesaria' },
+    media:   { emoji: '🟡', texto: 'Media - Requiere preparacion moderada' },
+    alta:    { emoji: '🟠', texto: 'Alta - Requiere bastante preparacion' },
+    critica: { emoji: '🔴', texto: 'Critica - Maxima prioridad' },
   };
 
   return (
     <div className="ca-overlay">
       <div className="ca-modal">
-
         <div className="ca-header">
           <div>
             <h2 className="ca-titulo">Nueva Actividad</h2>
-            <p className="ca-fecha-registro">📅 Registrada el: {fechaHoy}</p>
+            <p className="ca-fecha-registro">Registrada el: {fechaHoy}</p>
           </div>
-          <button className="ca-cerrar" onClick={onClose}>✕</button>
+          <button className="ca-cerrar" onClick={onClose}>X</button>
         </div>
 
         {success && (
           <div className="ca-mensaje ca-exito">
-            <span>✅</span>
-            <p>¡Actividad creada exitosamente! Cerrando...</p>
+            <p>Actividad creada exitosamente! Cerrando...</p>
           </div>
         )}
 
         {error && (
           <div className="ca-mensaje ca-error">
-            <span>⚠️</span>
             <p>{error}</p>
           </div>
         )}
 
         {!success && (
           <div className="ca-form">
-
             <div className="ca-campo">
-              <label className="ca-label">Título *</label>
+              <label className="ca-label">Titulo *</label>
               <input
                 className="ca-input"
                 type="text"
-                placeholder="Ej: Examen Final de Matemáticas"
+                placeholder="Ej: Examen Final de Matematicas"
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
               />
             </div>
 
             <div className="ca-campo">
-              <label className="ca-label">Descripción *</label>
+              <label className="ca-label">Descripcion *</label>
               <textarea
                 className="ca-textarea"
                 placeholder="Describe los detalles de la actividad..."
@@ -133,7 +126,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
 
             <div className="ca-fechas">
               <div className="ca-campo">
-                <label className="ca-label">📅 Fecha de inicio *</label>
+                <label className="ca-label">Fecha de inicio *</label>
                 <input
                   className="ca-input"
                   type="date"
@@ -142,7 +135,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
                 />
               </div>
               <div className="ca-campo">
-                <label className="ca-label">🏁 Fecha de cierre *</label>
+                <label className="ca-label">Fecha de cierre *</label>
                 <input
                   className="ca-input"
                   type="date"
@@ -159,10 +152,10 @@ function CreateActivity({ onClose, onActivityCreated }) {
                 value={tipo}
                 onChange={(e) => setTipo(e.target.value)}
               >
-                <option value="exam">📝 Examen</option>
-                <option value="project">💻 Proyecto</option>
-                <option value="presentation">🎤 Presentación</option>
-                <option value="homework">📚 Tarea</option>
+                <option value="exam">Examen</option>
+                <option value="project">Proyecto</option>
+                <option value="presentation">Presentacion</option>
+                <option value="homework">Tarea</option>
               </select>
             </div>
 
@@ -172,7 +165,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
                 {['baja', 'media', 'alta', 'critica'].map(nivel => (
                   <button
                     key={nivel}
-                    className={`ca-dificultad-btn ${dificultad === nivel ? 'seleccionado' : ''} ca-dif-${nivel}`}
+                    className={'ca-dificultad-btn ' + (dificultad === nivel ? 'seleccionado ' : '') + 'ca-dif-' + nivel}
                     onClick={() => setDificultad(nivel)}
                     type="button"
                   >
@@ -198,13 +191,11 @@ function CreateActivity({ onClose, onActivityCreated }) {
                 onClick={manejarEnvio}
                 disabled={loading}
               >
-                {loading ? '⏳ Guardando...' : '💾 Guardar actividad'}
+                {loading ? 'Guardando...' : 'Guardar actividad'}
               </button>
             </div>
-
           </div>
         )}
-
       </div>
     </div>
   );

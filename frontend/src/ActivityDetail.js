@@ -21,7 +21,7 @@ const DIFICULTAD_CONFIG = {
 function ActivityDetail({ actividad, onClose }) {
   const [subtasks, setSubtasks] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(false);
 
   useEffect(() => {
     if (!actividad || !actividad.id) {
@@ -36,7 +36,7 @@ function ActivityDetail({ actividad, onClose }) {
         setCargando(false);
       })
       .catch(function() {
-        setError(true);
+        setErrorCarga(true);
         setCargando(false);
       });
   }, [actividad.id]);
@@ -44,7 +44,7 @@ function ActivityDetail({ actividad, onClose }) {
   if (!actividad) return null;
 
   var tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
-  var dif  = actividad.difficulty ? (DIFICULTAD_CONFIG[actividad.difficulty] || null) : null;
+  var dif = actividad.difficulty ? (DIFICULTAD_CONFIG[actividad.difficulty] || null) : null;
 
   return (
     <div className="ad-overlay" onClick={onClose}>
@@ -86,14 +86,15 @@ function ActivityDetail({ actividad, onClose }) {
         </div>
 
         {cargando && <p className="ad-cargando">Cargando subtareas...</p>}
+        {errorCarga && <p className="ad-cargando">No se pudieron cargar las subtareas.</p>}
 
-        {error && <p className="ad-cargando">No se pudieron cargar las subtareas.</p>}
-
-        {!cargando && !error && (
+        {!cargando && !errorCarga && (
           <SubtaskManager
             activityId={actividad.id}
             subtasks={subtasks}
-            onSubtaskAdded={function(nueva) { setSubtasks(function(prev) { return prev.concat([nueva]); }); }}
+            onSubtaskAdded={function(nueva) {
+              setSubtasks(function(prev) { return prev.concat([nueva]); });
+            }}
           />
         )}
 
