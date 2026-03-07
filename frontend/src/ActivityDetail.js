@@ -1,145 +1,165 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./ActivityDetail.css";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://miniproyecto-1-zfn4.onrender.com";
+const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-zfn4.onrender.com";
 
 function ActivityDetail({ actividad, onClose }) {
+
   const [subtasks, setSubtasks] = useState([]);
-  const [nuevaSubtask, setNuevaSubtask] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const [mostrarInput, setMostrarInput] = useState(false);
+  const [nuevaSubtarea, setNuevaSubtarea] = useState("");
+
   useEffect(() => {
-    cargarSubtasks();
+    cargarSubtareas();
   }, [actividad]);
 
-  const cargarSubtasks = async () => {
+  const cargarSubtareas = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/subtasks/`);
+      const res = await fetch(API_BASE + "/api/subtasks/");
       const data = await res.json();
 
-      const filtradas = data.filter((s) => s.activity === actividad.id);
+      const filtradas = data.filter(
+        s => Number(s.activity) === Number(actividad.id)
+      );
+
       setSubtasks(filtradas);
       setLoading(false);
+
     } catch (err) {
-      console.error("Error cargando subtasks:", err);
+      console.error("Error cargando subtareas", err);
       setLoading(false);
     }
   };
 
-  const crearSubtask = async () => {
-    if (!nuevaSubtask.trim()) return;
+  const agregarSubtarea = async () => {
+
+    if (!nuevaSubtarea.trim()) return;
 
     const nueva = {
-      title: nuevaSubtask,
-      activity: actividad.id,
-      is_completed: false,
+      title: nuevaSubtarea,
+      activity: actividad.id
     };
 
     try {
-      const res = await fetch(`${API_BASE}/api/subtasks/`, {
+      const res = await fetch(API_BASE + "/api/subtasks/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(nueva),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(nueva)
       });
 
       if (res.status === 201) {
-        setNuevaSubtask("");
-        cargarSubtasks();
+
+        setNuevaSubtarea("");
+        setMostrarInput(false);
+        cargarSubtareas();
+
       }
+
     } catch (err) {
-      console.error("Error creando subtask:", err);
+      console.error("Error creando subtarea", err);
     }
   };
 
   const toggleSubtask = async (subtask) => {
+
+    const actualizado = {
+      ...subtask,
+      is_completed: !subtask.is_completed
+    };
+
     try {
-      await fetch(`${API_BASE}/api/subtasks/${subtask.id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          is_completed: !subtask.is_completed,
-        }),
+      await fetch(API_BASE + "/api/subtasks/" + subtask.id + "/", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(actualizado)
       });
 
-      cargarSubtasks();
+      cargarSubtareas();
+
     } catch (err) {
-      console.error("Error actualizando subtask:", err);
+      console.error("Error actualizando subtarea", err);
     }
   };
 
   return (
     <div className="ad-overlay">
+
       <div className="ad-modal">
+
         <div className="ad-header">
-          <div>
-            <h2 className="ad-title">{actividad.title}</h2>
-            <p className="ad-desc">{actividad.description}</p>
-          </div>
-
-          <button className="ad-close" onClick={onClose}>
-            ✕
-          </button>
+          <h2>{actividad.title}</h2>
+          <button className="ad-close" onClick={onClose}>X</button>
         </div>
 
-        <div className="ad-info">
-          <span>
-            📅 Inicio:{" "}
-            {new Date(actividad.start_date + "T00:00:00").toLocaleDateString(
-              "es-ES"
-            )}
-          </span>
-
-          <span>
-            ⏰ Entrega:{" "}
-            {new Date(actividad.due_date + "T00:00:00").toLocaleDateString(
-              "es-ES"
-            )}
-          </span>
-        </div>
+        <p className="ad-description">{actividad.description}</p>
 
         <div className="ad-subtasks">
+
           <h3>Subtareas</h3>
 
-          <div className="ad-crear">
-            <input
-              type="text"
-              placeholder="Nueva subtarea..."
-              value={nuevaSubtask}
-              onChange={(e) => setNuevaSubtask(e.target.value)}
-              className="ad-input"
-            />
-
-            <button className="ad-btn-add" onClick={crearSubtask}>
-              +
-            </button>
-          </div>
-
           {loading ? (
-            <p className="ad-loading">Cargando subtareas...</p>
+            <p>Cargando...</p>
           ) : subtasks.length === 0 ? (
-            <p className="ad-vacio">No hay subtareas aún</p>
+            <p className="ad-empty">No hay subtareas aún</p>
           ) : (
-            <ul className="ad-lista">
-              {subtasks.map((s) => (
+            <ul className="ad-list">
+              {subtasks.map(s => (
                 <li
                   key={s.id}
-                  className={
-                    s.is_completed ? "ad-subtask completada" : "ad-subtask"
-                  }
+                  className={`ad-item ${s.is_completed ? "done" : ""}`}
                   onClick={() => toggleSubtask(s)}
                 >
-                  <span className="ad-check">
+                  <span className="check">
                     {s.is_completed ? "✅" : "⬜"}
                   </span>
 
-                  <span className="ad-nombre">{s.title}</span>
+                  <span className="nombre">
+                    {s.title}
+                  </span>
+
                 </li>
               ))}
             </ul>
           )}
+
+          {/* BOTON AGREGAR SUBTAREA */}
+
+          {!mostrarInput && (
+            <button
+              className="btn-add-subtask"
+              onClick={() => setMostrarInput(true)}
+            >
+              + Agregar subtarea
+            </button>
+          )}
+
+          {mostrarInput && (
+            <div className="subtask-input">
+
+              <input
+                type="text"
+                placeholder="Nueva subtarea..."
+                value={nuevaSubtarea}
+                onChange={(e) => setNuevaSubtarea(e.target.value)}
+              />
+
+              <button onClick={agregarSubtarea}>
+                Guardar
+              </button>
+
+            </div>
+          )}
+
         </div>
+
       </div>
+
     </div>
   );
 }
