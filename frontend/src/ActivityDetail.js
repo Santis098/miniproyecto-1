@@ -1,148 +1,144 @@
-import React, { useState, useEffect } from 'react';
-import SubtaskManager from './SubtaskManager';
-import './ActivityDetail.css';
+import React, { useEffect, useState } from "react";
+import "./ActivityDetail.css";
 
-const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
-
-const TIPO_CONFIG = {
-  exam:         { label: 'Examen',       clase: 'badge-exam' },
-  project:      { label: 'Proyecto',     clase: 'badge-project' },
-  presentation: { label: 'Presentacion', clase: 'badge-presentation' },
-  homework:     { label: 'Tarea',        clase: 'badge-homework' },
-};
-
-const DIFICULTAD_CONFIG = {
-  baja:    { label: 'Baja',    clase: 'dif-baja' },
-  media:   { label: 'Media',   clase: 'dif-media' },
-  alta:    { label: 'Alta',    clase: 'dif-alta' },
-  critica: { label: 'Critica', clase: 'dif-critica' },
-};
+const API_BASE =
+  process.env.REACT_APP_API_URL || "https://miniproyecto-1-zfn4.onrender.com";
 
 function ActivityDetail({ actividad, onClose }) {
-
   const [subtasks, setSubtasks] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [errorCarga, setErrorCarga] = useState(false);
+  const [nuevaSubtask, setNuevaSubtask] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    cargarSubtasks();
+  }, [actividad]);
 
-    if (!actividad?.id) {
-      setCargando(false);
-      return;
+  const cargarSubtasks = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/subtasks/`);
+      const data = await res.json();
+
+      const filtradas = data.filter((s) => s.activity === actividad.id);
+      setSubtasks(filtradas);
+      setLoading(false);
+    } catch (err) {
+      console.error("Error cargando subtasks:", err);
+      setLoading(false);
     }
+  };
 
-    console.log("Actividad recibida:", actividad);
+  const crearSubtask = async () => {
+    if (!nuevaSubtask.trim()) return;
 
-    setCargando(true);
-    setErrorCarga(false);
+    const nueva = {
+      title: nuevaSubtask,
+      activity: actividad.id,
+      is_completed: false,
+    };
 
-    fetch(`${API_BASE}/api/subtasks/?activity=${actividad.id}`)
-      .then(res => {
-        console.log("Status respuesta:", res.status);
-
-        if (!res.ok) {
-          throw new Error("Error HTTP " + res.status);
-        }
-
-        return res.json();
-      })
-      .then(data => {
-
-        console.log("Subtasks recibidas:", data);
-
-        // seguridad por si el backend no filtra
-        const propias = data.filter(st => Number(st.activity) === Number(actividad.id));
-
-        console.log("Subtasks filtradas:", propias);
-
-        setSubtasks(propias);
-        setCargando(false);
-
-      })
-      .catch(err => {
-        console.error("Error cargando subtasks:", err);
-        setErrorCarga(true);
-        setCargando(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/subtasks/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nueva),
       });
 
-  }, [actividad?.id]);
+      if (res.status === 201) {
+        setNuevaSubtask("");
+        cargarSubtasks();
+      }
+    } catch (err) {
+      console.error("Error creando subtask:", err);
+    }
+  };
 
-  if (!actividad) return null;
+  const toggleSubtask = async (subtask) => {
+    try {
+      await fetch(`${API_BASE}/api/subtasks/${subtask.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_completed: !subtask.is_completed,
+        }),
+      });
 
-  const tipo = TIPO_CONFIG[actividad.activity_type] || { label: 'Otro', clase: 'badge-project' };
-  const dif = actividad.difficulty ? (DIFICULTAD_CONFIG[actividad.difficulty] || null) : null;
+      cargarSubtasks();
+    } catch (err) {
+      console.error("Error actualizando subtask:", err);
+    }
+  };
 
   return (
-    <div
-  className="ad-overlay"
-  onClick={(e) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  }}
->
-      <div className="ad-modal" onClick={(e) => e.stopPropagation()}>
-
+    <div className="ad-overlay">
+      <div className="ad-modal">
         <div className="ad-header">
-          <div className="ad-badges">
-            <span className={`badge ${tipo.clase}`}>{tipo.label}</span>
-            {dif && <span className={`badge-dif ${dif.clase}`}>{dif.label}</span>}
+          <div>
+            <h2 className="ad-title">{actividad.title}</h2>
+            <p className="ad-desc">{actividad.description}</p>
           </div>
-          <button className="ad-cerrar" onClick={onClose}>X</button>
+
+          <button className="ad-close" onClick={onClose}>
+            ✕
+          </button>
         </div>
 
-        <h2 className="ad-titulo">{actividad.title}</h2>
+        <div className="ad-info">
+          <span>
+            📅 Inicio:{" "}
+            {new Date(actividad.start_date + "T00:00:00").toLocaleDateString(
+              "es-ES"
+            )}
+          </span>
 
-        {actividad.description && (
-          <p className="ad-descripcion">{actividad.description}</p>
-        )}
+          <span>
+            ⏰ Entrega:{" "}
+            {new Date(actividad.due_date + "T00:00:00").toLocaleDateString(
+              "es-ES"
+            )}
+          </span>
+        </div>
 
-        <div className="ad-fechas">
+        <div className="ad-subtasks">
+          <h3>Subtareas</h3>
 
-          {actividad.start_date && (
-            <div className="ad-fecha-item">
-              <span className="ad-fecha-label">Inicio</span>
-              <span className="ad-fecha-valor">
-                {new Date(actividad.start_date + 'T00:00:00').toLocaleDateString('es-ES', {
-                  day: '2-digit', month: 'long', year: 'numeric'
-                })}
-              </span>
-            </div>
+          <div className="ad-crear">
+            <input
+              type="text"
+              placeholder="Nueva subtarea..."
+              value={nuevaSubtask}
+              onChange={(e) => setNuevaSubtask(e.target.value)}
+              className="ad-input"
+            />
+
+            <button className="ad-btn-add" onClick={crearSubtask}>
+              +
+            </button>
+          </div>
+
+          {loading ? (
+            <p className="ad-loading">Cargando subtareas...</p>
+          ) : subtasks.length === 0 ? (
+            <p className="ad-vacio">No hay subtareas aún</p>
+          ) : (
+            <ul className="ad-lista">
+              {subtasks.map((s) => (
+                <li
+                  key={s.id}
+                  className={
+                    s.is_completed ? "ad-subtask completada" : "ad-subtask"
+                  }
+                  onClick={() => toggleSubtask(s)}
+                >
+                  <span className="ad-check">
+                    {s.is_completed ? "✅" : "⬜"}
+                  </span>
+
+                  <span className="ad-nombre">{s.title}</span>
+                </li>
+              ))}
+            </ul>
           )}
-
-          <div className="ad-fecha-item">
-            <span className="ad-fecha-label">Vence</span>
-            <span className="ad-fecha-valor">
-              {new Date(actividad.due_date + 'T00:00:00').toLocaleDateString('es-ES', {
-                day: '2-digit', month: 'long', year: 'numeric'
-              })}
-            </span>
-          </div>
-
         </div>
-
-        {cargando && (
-          <p className="ad-cargando">Cargando subtareas...</p>
-        )}
-
-        {errorCarga && (
-          <p className="ad-cargando">No se pudieron cargar las subtareas.</p>
-        )}
-
-        {!cargando && !errorCarga && subtasks.length === 0 && (
-          <p className="ad-cargando">Esta actividad aún no tiene subtareas.</p>
-        )}
-
-        {!cargando && !errorCarga && subtasks.length > 0 && (
-          <SubtaskManager
-            activityId={actividad.id}
-            subtasks={subtasks}
-            onSubtaskAdded={(nueva) =>
-              setSubtasks(prev => [...prev, nueva])
-            }
-          />
-        )}
-
       </div>
     </div>
   );
