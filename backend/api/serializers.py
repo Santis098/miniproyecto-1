@@ -22,6 +22,9 @@ class ActivitySerializer(serializers.ModelSerializer):
     title = serializers.CharField(required=True)
     due_date = serializers.DateField(required=True)
     description = serializers.CharField(required=True)   # ahora es obligatoria
+    start_date = serializers.DateField(required=True)
+    difficulty = serializers.CharField(required=True)
+    activity_type = serializers.CharField(required=True)
 
     class Meta:
         model = Activity
@@ -32,6 +35,13 @@ class ActivitySerializer(serializers.ModelSerializer):
         if value < timezone.now().date():
             raise serializers.ValidationError("La fecha de vencimiento no puede ser anterior a la fecha actual.")
         return value
+
+    def validate_start_date(self, value):
+    if value < timezone.now().date():
+        raise serializers.ValidationError(
+            "La fecha de inicio no puede ser anterior a la fecha actual."
+        )
+    return value
 
     # Validación personalizada del título
     def validate_title(self, value):
@@ -59,3 +69,25 @@ class ActivitySerializer(serializers.ModelSerializer):
             )
 
         return value
+
+    def validate_difficulty(self, value):
+
+    opciones = ["baja", "media", "alta", "critica"]
+
+    if value.lower() not in opciones:
+        raise serializers.ValidationError(
+            "La dificultad debe ser: baja, media, alta o critica."
+        )
+
+    return value
+
+    def validate_activity_type(self, value):
+
+    tipos = ["exam", "project", "presentation", "homework"]
+
+    if value.lower() not in tipos:
+        raise serializers.ValidationError(
+            "El tipo de actividad debe ser: exam, project, presentation o homework."
+        )
+
+    return value
