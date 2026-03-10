@@ -42,13 +42,17 @@ class Activity(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     due_date = models.DateField()
-    start_date = models.DateField(null=True, blank=True)        # ← NUEVO
-    difficulty = models.CharField(max_length=20, null=True, blank=True)   # ← NUEVO
-    activity_type = models.CharField(max_length=20, null=True, blank=True) # ← NUEVO
+    start_date = models.DateField(null=True, blank=True)
+    difficulty = models.CharField(max_length=20, null=True, blank=True)
+    activity_type = models.CharField(max_length=20, null=True, blank=True)
+    asignatura = models.ForeignKey(        # ← NUEVO
+        'Asignatura',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='actividades'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.title
 
 class Subtask(models.Model):
     title = models.CharField(max_length=255)
