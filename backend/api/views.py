@@ -4,9 +4,11 @@ from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Asignatura, Activity, Subtask
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
 from .serializers import (
     AsignaturaSerializer, ActivitySerializer, SubtaskSerializer,
-    RegisterSerializer, LoginSerializer
+    RegisterSerializer, LoginSerializer, TareaHoySerializer  # ← agregar este
 )
 
 # ==============================
@@ -90,3 +92,19 @@ class SubtaskListCreateAPIView(generics.ListCreateAPIView):
 class SubtaskRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Subtask.objects.all()
     serializer_class = SubtaskSerializer
+class TareasHoyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        hoy = timezone.now().date()
+        tareas = Activity.objects.filter(usuario=request.user)
+
+        vencidas = tareas.filter(due_date__lt=hoy)
+        hoy_tareas = tareas.filter(due_date=hoy)
+        proximas = tareas.filter(due_date__gt=hoy)
+
+        return Response({
+            "vencidas": TareaHoySerializer(vencidas, many=True).data,
+            "hoy": TareaHoySerializer(hoy_tareas, many=True).data,
+            "proximas": TareaHoySerializer(proximas, many=True).data,
+        })

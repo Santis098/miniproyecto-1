@@ -126,3 +126,14 @@ class ActivitySerializer(serializers.ModelSerializer):
             "El tipo de actividad debe ser: exam, project, presentation o homework."
         )
         return value
+class TareaHoySerializer(serializers.ModelSerializer):
+    progreso = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Activity
+        fields = ['id', 'title', 'due_date', 'horas_estimadas', 'horas_trabajadas', 'progreso', 'difficulty', 'activity_type']
+
+    def get_progreso(self, obj):
+        if obj.horas_estimadas and obj.horas_estimadas > 0:
+            return round((obj.horas_trabajadas / obj.horas_estimadas) * 100, 1)
+        return 0

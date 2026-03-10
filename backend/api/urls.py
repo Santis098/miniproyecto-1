@@ -3,11 +3,10 @@ from .views import (
     AsignaturaListCreateAPIView, AsignaturaRetrieveUpdateDestroyAPIView,
     ActivityListCreateAPIView, ActivityRetrieveUpdateDestroyAPIView,
     SubtaskListCreateAPIView, SubtaskRetrieveUpdateDestroyAPIView,
-    RegisterView, LoginView
+    RegisterView, LoginView, TareasHoyView  # ← agregar TareasHoyView
 )
 
 urlpatterns = [
-    # Auth ← NUEVO
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/login/', LoginView.as_view(), name='login'),
 
@@ -22,4 +21,5 @@ urlpatterns = [
     # Subtareas
     path('subtasks/', SubtaskListCreateAPIView.as_view(), name='subtask-list-create'),
     path('subtasks/<int:pk>/', SubtaskRetrieveUpdateDestroyAPIView.as_view(), name='subtask-detail'),
+    path('tasks/hoy/', TareasHoyView.as_view(), name='tasks-hoy'),
 ]
