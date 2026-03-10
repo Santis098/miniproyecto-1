@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "./ActivityDetail.css";
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-zfn4.onrender.com";
+const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-x936.onrender.com";
 
 function ActivityDetail({ actividad, onClose }) {
   const [subtasks, setSubtasks]                   = useState([]);

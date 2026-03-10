@@ -6,7 +6,7 @@ import './App.css';
 import CreateActivity from './CreateActivity';
 import ActivityDetail from './ActivityDetail';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
+const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
 
 const TIPO_CONFIG = {
   exam:         { label: 'Examen',        clase: 'badge-exam' },
