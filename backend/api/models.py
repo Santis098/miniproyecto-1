@@ -42,9 +42,25 @@ class Activity(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     due_date = models.DateField()
-    start_date = models.DateField(null=True, blank=True)        # ← NUEVO
-    difficulty = models.CharField(max_length=20, null=True, blank=True)   # ← NUEVO
-    activity_type = models.CharField(max_length=20, null=True, blank=True) # ← NUEVO
+    start_date = models.DateField(null=True, blank=True)
+    difficulty = models.CharField(max_length=20, null=True, blank=True)
+    activity_type = models.CharField(max_length=20, null=True, blank=True)
+    asignatura = models.ForeignKey(
+        'Asignatura',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='actividades'
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='actividades'
+    )
+    horas_estimadas = models.FloatField(default=0)
+    horas_trabajadas = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

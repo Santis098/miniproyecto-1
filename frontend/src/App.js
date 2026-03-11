@@ -5,7 +5,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 // Importamos todas tus pantallas
 import Login from './pages/Login';
 import Registrar from './pages/Registrar';
-import Dashboard from './pages/Dashboard'; // Este es tu código anterior
+import Dashboard from './pages/Dashboard'; 
 
 // El Guardián de Rutas
 const ProtectedRoute = ({ children }) => {
