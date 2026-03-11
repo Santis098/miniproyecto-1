@@ -1,0 +1,22 @@
+/* Register.css - Estructura compartida con Login */
+.register-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background-color: #dce7ff; font-family: sans-serif; padding: 20px 0; }
+.register-header { text-align: center; margin-bottom: 20px; }
+.register-header .logo-icon { font-size: 48px; margin-bottom: 10px; color: #0f4cff; }
+.register-header h1 { margin: 0; font-size: 24px; color: #333; }
+.register-header p { color: #666; font-size: 14px; }
+.register-card { background-color: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); width: 100%; max-width: 350px; text-align: center; }
+.register-card h2 { margin-top: 0; margin-bottom: 5px; font-size: 22px; color: #333; }
+.register-card .subtitle { color: #777; font-size: 14px; margin-bottom: 30px; }
+.input-group { text-align: left; margin-bottom: 15px; } /* Un poco menos de margen para que quepa todo */
+.input-group label { display: block; font-size: 12px; font-weight: 600; color: #333; margin-bottom: 8px; }
+.input-group input { width: 100%; padding: 12px; border: 1px solid transparent; border-radius: 8px; background-color: #f0f0f0; font-size: 14px; box-sizing: border-box; outline: none; transition: 0.3s; }
+.input-group input:focus { border: 1px solid #0f4cff; }
+.primary-button { width: 100%; padding: 14px; background-color: #0f4cff; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: 0.3s; }
+.primary-button:hover { background-color: #0b38cc; }
+.redirect-link { margin-top: 25px; font-size: 12px; font-weight: bold; color: #0f4cff; }
+.redirect-link a { color: #0f4cff; text-decoration: none; }
+
+/* --- ESTILOS DE ERRORES --- */
+.error-alert { background-color: #ffeaea; color: #d32f2f; padding: 12px; border: 1px solid #ffb3b3; border-radius: 8px; font-size: 13px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; text-align: left; }
+.input-group input.input-error { border: 1px solid #d32f2f; background-color: #fff; }
+.input-group input.input-error:focus { border: 1px solid #d32f2f; outline: none; }
