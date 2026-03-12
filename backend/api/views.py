@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Asignatura, Activity, Subtask
+from .models import Asignatura, Activity, Subtask, Usuario
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from .serializers import (
@@ -50,14 +50,28 @@ class LoginView(BaseView, APIView):
         if not serializer.is_valid():
             return self.error("Datos invalidos.", serializer.errors)
 
-        user = authenticate(
-            username=serializer.validated_data['username'],
-            password=serializer.validated_data['password']
-        )
+        email = serializer.validated_data['email']
+        password = serializer.validated_data['password']
+
+        # Verificar si el email existe
+        try:
+            user_obj = Usuario.objects.get(email=email)
+        except Usuario.DoesNotExist:
+            return self.error(
+                f"No existe una cuenta con el correo '{email}'.",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Verificar si la contrasena es correcta
+        user = authenticate(username=user_obj.username, password=password)
         if not user:
-            return self.error("Credenciales incorrectas.", status_code=status.HTTP_401_UNAUTHORIZED)
+            return self.error(
+                "La contrasena es incorrecta. Intentalo de nuevo.",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+
         if not user.activo:
-            return self.error("Usuario inactivo. Contacta al administrador.", status_code=status.HTTP_403_FORBIDDEN)
+            return self.error("Tu cuenta esta desactivada. Contacta al administrador.", status_code=status.HTTP_403_FORBIDDEN)
 
         refresh = RefreshToken.for_user(user)
         return self.success({
