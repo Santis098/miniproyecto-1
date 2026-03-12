@@ -1,220 +1,152 @@
-// ============================================================
-// src/pages/Dashboard.js - Dashboard Academico Moderno
-// ============================================================
-import React, { useState, useEffect, useCallback } from 'react';
-// Notar que agregamos "../" a estas importaciones porque bajamos a la carpeta "pages"
-import '../App.css';
-import CreateActivity from '../CreateActivity';
-import ActivityDetail from '../ActivityDetail';
+import React, { useState, useEffect } from 'react'; // ⬅️ Agregamos useEffect
+import { useNavigate } from 'react-router-dom';
+import './Dashboard.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-zfn4.onrender.com';
+const Dashboard = () => {
+  const navigate = useNavigate();
+  
+  // Empezamos con un nombre en blanco
+  const [userName, setUserName] = useState('');
+  const currentDate = 'sábado, 7 de marzo de 2026';
 
-const TIPO_CONFIG = {
-  exam:         { label: 'Examen',        clase: 'badge-exam' },
-  project:      { label: 'Proyecto',      clase: 'badge-project' },
-  presentation: { label: 'Presentacion',  clase: 'badge-presentation' },
-  homework:     { label: 'Tarea',         clase: 'badge-homework' },
-};
-
-const DIFICULTAD_CONFIG = {
-  baja:    { label: 'Baja',    clase: 'dif-baja' },
-  media:   { label: 'Media',   clase: 'dif-media' },
-  alta:    { label: 'Alta',    clase: 'dif-alta' },
-  critica: { label: 'Critica', clase: 'dif-critica' },
-};
-
-function diasRestantes(fechaStr) {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const fecha = new Date(fechaStr + 'T00:00:00');
-  const diff = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
-  if (diff === 0) return { texto: 'Hoy',             clase: 'dias-hoy' };
-  if (diff === 1) return { texto: 'Manana',           clase: 'dias-pronto' };
-  if (diff <= 3)  return { texto: `En ${diff} dias`,  clase: 'dias-pronto' };
-  return           { texto: `En ${diff} dias`,         clase: 'dias-normal' };
-}
-
-// CAMBIO DE NOMBRE AQUI
-function Dashboard() {
-  const [tabActiva, setTabActiva]                         = useState('hoy');
-  const [asignaturas, setAsignaturas]                     = useState([]);
-  const [proximasActividades, setProximasActividades]     = useState([]);
-  const [cargandoActividades, setCargandoActividades]     = useState(true);
-  const [mostrarFormulario, setMostrarFormulario]         = useState(false);
-  const [actividadSeleccionada, setActividadSeleccionada] = useState(null);
-  const [confirmarEliminar, setConfirmarEliminar]         = useState(null);
-
+  // ⬅️ NUEVO: Apenas carga la pantalla, buscamos el nombre guardado
   useEffect(() => {
-    fetch(`${API_BASE}/api/asignaturas/`)
-      .then(res => res.json())
-      .then(data => setAsignaturas(data))
-      .catch(err => console.error('Error cargando asignaturas:', err));
-  }, []);
-
-  const cargarActividades = useCallback(() => {
-    setCargandoActividades(true);
-    fetch(`${API_BASE}/api/activities/`)
-      .then(res => res.json())
-      .then(data => {
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        const proximas = data
-          .filter(a => new Date(a.due_date + 'T00:00:00') >= hoy)
-          .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
-        setProximasActividades(proximas);
-        setCargandoActividades(false);
-      })
-      .catch(err => {
-        console.error('Error cargando actividades:', err);
-        setCargandoActividades(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    cargarActividades();
-  }, [cargarActividades]);
-
-  const handleActividadCreada = () => {
-    cargarActividades();
-    setMostrarFormulario(false);
-  };
-
-  const confirmarYEliminar = async () => {
-    if (!confirmarEliminar) return;
-    try {
-      await fetch(`${API_BASE}/api/activities/${confirmarEliminar.id}/`, {
-        method: 'DELETE',
-      });
-      setConfirmarEliminar(null);
-      cargarActividades();
-    } catch (err) {
-      console.error('Error eliminando actividad:', err);
+    const nombreGuardado = localStorage.getItem('username');
+    if (nombreGuardado) {
+      setUserName(nombreGuardado);
+    } else {
+      setUserName('Usuario'); // Por si acaso no encuentra nada
     }
-  };
+  }, []);
 
-  // FUNCION NUEVA PARA CERRAR SESION
-  const cerrarSesion = () => {
+  const handleLogout = () => {
+    // Borramos la llave y el nombre, y lo mandamos al login
     localStorage.removeItem('token');
-    window.location.reload(); // Recarga la página y el App.js te sacará al login
+    localStorage.removeItem('username'); // ⬅️ Limpiamos al salir
+    navigate('/login');
   };
 
   return (
-    <div className="app">
-      <header className="cabecera">
-        <div className="cabecera-titulo" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-          <h1>Gestion de Actividades Evaluativas</h1>
-          {/* BOTON NUEVO AQUI */}
-          <button onClick={cerrarSesion} style={{ padding: '8px 16px', cursor: 'pointer', background: '#d32f2f', color: 'white', border: 'none', borderRadius: '4px' }}>
-            Cerrar Sesión
+    <div className="dashboard-container">
+      
+      {/* 1. Barra Superior */}
+      <header className="dashboard-topbar">
+        <div className="brand">
+          <span role="img" aria-label="calendar">📅</span> Gestión de Actividades
+        </div>
+        <div className="user-actions">
+          <span>👤 {userName}</span>
+          <button className="logout-btn" onClick={handleLogout}>
+            <span>🚪</span> Salir
           </button>
         </div>
-        <nav className="tabs">
-          <button className={tabActiva === 'hoy' ? 'tab activa' : 'tab'} onClick={() => setTabActiva('hoy')}>Hoy</button>
-          <button className={tabActiva === 'asignaturas' ? 'tab activa' : 'tab'} onClick={() => setTabActiva('asignaturas')}>Asignaturas</button>
-          <button className="tab">Actividades (Coming Soon)</button>
-          <button className="tab">Avance (Coming Soon)</button>
-        </nav>
       </header>
 
-      {/* RESTO DE TU CODIGO INTACTO */}
-      {tabActiva === 'hoy' && (
-        <main className="contenido">
-          <div className="panel-titulo">
-            <h2>Panel General</h2>
-            <span className="fecha">{new Date().toLocaleDateString()}</span>
+      {/* 2. Banner Azul de Información */}
+      <div className="info-banner">
+        <span>ℹ️</span> Priorizamos tu día: primero lo vencido, luego lo urgente de hoy, y finalmente lo próximo. Ante fechas iguales, sugerimos completar primero las tareas más rápidas.
+      </div>
+
+      {/* 3. Menú de Navegación (Tabs) */}
+      <nav className="dashboard-nav">
+        <div className="nav-tab active"><span>⊞</span> Hoy</div>
+        <div className="nav-tab"><span>📋</span> Actividades</div>
+        <div className="nav-tab"><span>📅</span> Planificación</div>
+        <div className="nav-tab"><span>📈</span> Avance</div>
+      </nav>
+
+      {/* 4. Contenido Principal */}
+      <main className="dashboard-content">
+        
+        <div className="page-title">
+          <h1>Panel de Hoy</h1>
+          <p>{currentDate}</p>
+        </div>
+
+        {/* 5. Tarjetas de Estadísticas */}
+        <div className="stats-grid">
+          <div className="stat-card">
+            <h3>Hoy</h3>
+            <div className="stat-number blue">0</div>
+            <div className="stat-desc">actividades activas</div>
           </div>
-
-          <button className="btn-nueva-actividad" onClick={() => setMostrarFormulario(true)}>
-            + Nueva Actividad
-          </button>
-
-          {mostrarFormulario && (
-            <CreateActivity
-              onClose={() => setMostrarFormulario(false)}
-              onActivityCreated={handleActividadCreada}
-            />
-          )}
-
-          <div className="seccion">
-            <h3 className="seccion-titulo">Proximas Actividades</h3>
-
-            {cargandoActividades ? (
-              <div className="vacio">
-                <div className="spinner"></div>
-                <p>Cargando actividades...</p>
-              </div>
-            ) : (
-              <div className="lista-actividades">
-                {proximasActividades.map(actividad => {
-                  const tipo = TIPO_CONFIG[actividad.activity_type] || { label: actividad.activity_type, clase: 'badge-project' };
-                  const dif  = DIFICULTAD_CONFIG[actividad.difficulty] || null;
-                  const dias = diasRestantes(actividad.due_date);
-
-                  return (
-                    <div key={actividad.id} className="actividad-fila">
-                      <div className="actividad-izq">
-                        <span className={`dias-badge ${dias.clase}`}>{dias.texto}</span>
-                        <span className="fecha-vence">
-                          {new Date(actividad.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
-                        </span>
-                      </div>
-
-                      <div className="actividad-info">
-                        <span className="actividad-nombre">{actividad.title}</span>
-                        {actividad.description && (
-                          <span className="actividad-fecha">{actividad.description}</span>
-                        )}
-                      </div>
-
-                      <div className="actividad-badges">
-                        <span className={`badge ${tipo.clase}`}>{tipo.label}</span>
-                        {dif && <span className={`badge-dif ${dif.clase}`}>{dif.label}</span>}
-                        <button
-                          className="btn-ver-act"
-                          onClick={() => setActividadSeleccionada(actividad)}
-                        >
-                          Ver
-                        </button>
-                        <button
-                          className="btn-eliminar-actividad"
-                          onClick={() => setConfirmarEliminar(actividad)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+          <div className="stat-card">
+            <h3>Esta Semana</h3>
+            <div className="stat-number purple">3</div>
+            <div className="stat-desc">actividades programadas</div>
           </div>
-        </main>
-      )}
-
-      {actividadSeleccionada && (
-        <ActivityDetail
-          actividad={actividadSeleccionada}
-          onClose={() => setActividadSeleccionada(null)}
-        />
-      )}
-
-      {/* MODAL CONFIRMAR ELIMINAR ACTIVIDAD */}
-      {confirmarEliminar && (
-        <div className="confirm-overlay">
-          <div className="confirm-modal">
-            <h3>Eliminar actividad</h3>
-            <p>Estas seguro que deseas eliminar <strong>{confirmarEliminar.title}</strong>?</p>
-            <p className="confirm-aviso">Esta accion no se puede deshacer.</p>
-            <div className="confirm-botones">
-              <button className="confirm-btn-cancelar" onClick={() => setConfirmarEliminar(null)}>Cancelar</button>
-              <button className="confirm-btn-eliminar" onClick={confirmarYEliminar}>Si, eliminar</button>
-            </div>
+          <div className="stat-card">
+            <h3>Atrasadas</h3>
+            <div className="stat-number red">0</div>
+            <div className="stat-desc">necesitan reprogramación</div>
           </div>
         </div>
-      )}
+
+        {/* 6. Sección: Prioridades para Hoy */}
+        <div className="section-card">
+          <div className="section-header">
+            <span>🕒</span> Prioridades para Hoy
+          </div>
+          <div className="empty-state">
+            <div className="success-icon">✅</div>
+            <p>No tienes actividades programadas para hoy</p>
+            <button className="create-btn">Crear nueva actividad</button>
+          </div>
+        </div>
+
+        {/* 7. Sección: Próximas Actividades */}
+        <div className="section-card">
+          <div className="section-header">
+            <span>📅</span> Próximas Actividades
+          </div>
+          
+          <div className="activities-list">
+            
+            {/* Actividad 1 (Con alerta) */}
+            <div className="activity-item warning-border">
+              <div className="activity-info-group">
+                <div className="activity-number">1</div>
+                <div className="activity-details">
+                  <h4>Presentación de Literatura</h4>
+                  <p>Inicia en 2 días - 9/3/2026</p>
+                  <div className="conflict-alert">
+                    <span>⚠️</span> 1 conflicto(s) sin resolver
+                  </div>
+                </div>
+              </div>
+              <button className="ajustar-btn">Ajustar</button>
+            </div>
+
+            {/* Actividad 2 */}
+            <div className="activity-item">
+              <div className="activity-info-group">
+                <div className="activity-number">2</div>
+                <div className="activity-details">
+                  <h4>Quiz de Historia</h4>
+                  <p>Inicia en 7 días - 14/3/2026</p>
+                </div>
+              </div>
+              <button className="ajustar-btn">Ajustar</button>
+            </div>
+
+            {/* Actividad 3 */}
+            <div className="activity-item">
+              <div className="activity-info-group">
+                <div className="activity-number">3</div>
+                <div className="activity-details">
+                  <h4>Tarea de Física</h4>
+                  <p>Inicia en 10 días - 17/3/2026</p>
+                </div>
+              </div>
+              <button className="ajustar-btn">Ajustar</button>
+            </div>
+
+          </div>
+        </div>
+
+      </main>
     </div>
   );
-}
+};
 
-// CAMBIO DE NOMBRE AQUI
 export default Dashboard;

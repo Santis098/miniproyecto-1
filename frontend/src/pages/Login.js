@@ -1,49 +1,62 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './Login.css';
 
+// Aquí está tu API_BASE apuntando a la nube de Render
+const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
+
 const Login = () => {
-  // 1. Estados para guardar lo que el usuario escribe
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  // 2. Estados para manejar los errores
   const [errorMessage, setErrorMessage] = useState('');
-  const [errorFields, setErrorFields] = useState([]); // Guarda qué campos deben ponerse rojos
+  const [errorFields, setErrorFields] = useState([]);
+  
+  // Aquí está el navigate que se había perdido
+  const navigate = useNavigate(); 
 
-  // 3. Función que se ejecuta al hacer clic en "Iniciar Sesión"
-  const handleLogin = (e) => {
-    e.preventDefault(); // Evita que la página se recargue
-
-    // Limpiamos errores previos antes de validar de nuevo
+  const handleLogin = async (e) => {
+    e.preventDefault();
     setErrorMessage('');
     setErrorFields([]);
 
-    // Validación A: Campos vacíos (Prototipo 2)
+    // 1. Validación: Campos vacíos
     if (!email || !password) {
       setErrorMessage('Ingresa los datos para acceder');
-      setErrorFields(['email', 'password']);
-      return; // Detiene la ejecución aquí
-    }
-
-    // Validación B: Formato de correo incorrecto (Prototipo 3)
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setErrorMessage("Ten en cuenta los parámetros para correo: 'usuario@ejemplo.com'");
-      setErrorFields(['email']);
+      const vacios = [];
+      if (!email) vacios.push('email');
+      if (!password) vacios.push('password');
+      setErrorFields(vacios);
       return;
     }
 
-    // Simulación de Validación C: Credenciales incorrectas (Prototipo 4)
-    // Nota: Aquí en el futuro harás la petición a tu backend. Por ahora simularemos que el correo correcto es "admin@ejemplo.com"
-    if (email !== 'admin@ejemplo.com' || password !== '123456') {
-      setErrorMessage('Usuario y/o contraseña incorrecta');
-      setErrorFields(['email', 'password']);
-      return;
-    }
+    // ELIMINAMOS la validación estricta de la arroba (@) para que te deje poner tu Nombre de Usuario
 
-    // Si pasa todas las validaciones:
-    alert('¡Login Exitoso! Redirigiendo...');
-    // Aquí luego pondremos el código para redirigir a la vista de Actividades
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/login/`, { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: email, // Aquí viajará el "Nombre de usuario" que escribas
+          password: password
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === "success") {
+        localStorage.setItem('token', data.data.access); 
+        localStorage.setItem('username', data.data.username); // ⬅️ NUEVA LÍNEA: Guardamos el nombre
+        navigate('/hoy');
+      } else {
+        setErrorMessage('Usuario y/o contraseña incorrecta');
+        setErrorFields(['email', 'password']);
+      }
+    } catch (error) {
+      console.error("Error conectando al backend:", error);
+      setErrorMessage('Error de conexión con el servidor');
+    }
   };
 
   return (
@@ -58,7 +71,6 @@ const Login = () => {
         <h2>Iniciar Sesión</h2>
         <p className="subtitle">Ingresa los datos para acceder</p>
 
-        {/* 4. Caja de mensaje de error (Solo se muestra si hay un errorMessage) */}
         {errorMessage && (
           <div className="error-alert">
             <span className="error-icon">⚠️</span> {errorMessage}
@@ -67,13 +79,12 @@ const Login = () => {
 
         <form onSubmit={handleLogin}>
           <div className="input-group">
-            <label>Correo electrónico</label>
+            <label>Correo electrónico (o Usuario)</label>
             <input 
               type="text" 
               placeholder="usuario@ejemplo.com" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              // Si 'email' está en la lista de errores, le agregamos la clase 'input-error'
               className={errorFields.includes('email') ? 'input-error' : ''}
             />
           </div>
@@ -95,7 +106,7 @@ const Login = () => {
         </form>
 
         <div className="redirect-link">
-          <span>¿No tienes cuenta? <a href="/register">Regístrate</a></span>
+          <span>¿No tienes cuenta? <span style={{cursor: 'pointer', color: '#0f4cff', textDecoration: 'underline'}} onClick={() => navigate('/register')}>Regístrate</span></span>
         </div>
       </div>
     </div>

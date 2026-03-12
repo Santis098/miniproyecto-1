@@ -20,3 +20,32 @@
 .error-alert { background-color: #ffeaea; color: #d32f2f; padding: 12px; border: 1px solid #ffb3b3; border-radius: 8px; font-size: 13px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; text-align: left; }
 .input-group input.input-error { border: 1px solid #d32f2f; background-color: #fff; }
 .input-group input.input-error:focus { border: 1px solid #d32f2f; outline: none; }
+
+/* ESTILOS DE ÉXITO (Fondo verde claro, borde verde) */
+.success-alert {
+  background-color: #d4f8d4; /* Fondo verde claro */
+  border: 1px solid #7ceb7c; /* Borde verde brillante */
+  color: #555; /* Texto gris oscuro/verde */
+  padding: 12px 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+}
+
+/* BOTÓN DE ÉXITO (Verde oscuro) */
+.success-button {
+  width: 100%;
+  padding: 12px;
+  background-color: #00a650; /* Verde estilo prototipo */
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.success-button:hover {
+  background-color: #008c43;
+}
