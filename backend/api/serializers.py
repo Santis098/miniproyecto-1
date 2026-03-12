@@ -10,10 +10,14 @@ from django.contrib.auth.password_validation import validate_password
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
+    username = serializers.CharField(required=True)
 
     class Meta:
         model = Usuario
         fields = ('username', 'email', 'password', 'password2')
+        extra_kwargs = {
+            'username': {'validators': []},  # desactivar validador por defecto de Django
+        }
 
     def validate_username(self, value):
         if Usuario.objects.filter(username=value).exists():
