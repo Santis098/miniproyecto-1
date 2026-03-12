@@ -244,9 +244,49 @@ class TareasHoyView(BaseView, APIView):
 
     def get(self, request):
         hoy = timezone.now().date()
+        fin_semana = hoy + timezone.timedelta(days=7)
         tareas = Activity.objects.filter(usuario=request.user)
+
+        # Escenario 3: estado vacio
+        if not tareas.exists():
+            return self.success({
+                "empty": True,
+                "mensaje": "No tienes tareas pendientes.",
+                "contadores": {"hoy": 0, "esta_semana": 0, "atrasadas": 0},
+                "vencidas": [],
+                "hoy": [],
+                "proximas": [],
+            }, "No tienes tareas pendientes.")
+
+        # Filtros opcionales: ?filtrar_por=dificultad|asignatura|horas_estimadas|progreso|fecha
+        filtrar_por = request.query_params.get('filtrar_por', None)
+        orden = 'horas_estimadas'  # orden por defecto (menor esfuerzo primero)
+
+        if filtrar_por == 'dificultad':
+            orden = 'difficulty'
+        elif filtrar_por == 'asignatura':
+            orden = 'asignatura'
+        elif filtrar_por == 'horas_estimadas':
+            orden = 'horas_estimadas'
+        elif filtrar_por == 'fecha':
+            orden = 'due_date'
+
+        # Agrupacion y ordenamiento
+        vencidas  = tareas.filter(due_date__lt=hoy).order_by(orden)
+        hoy_tareas = tareas.filter(due_date=hoy).order_by(orden)
+        proximas  = tareas.filter(due_date__gt=hoy).order_by(orden)
+
+        # Contadores para el panel
+        contadores = {
+            "hoy": hoy_tareas.count(),
+            "esta_semana": tareas.filter(due_date__gt=hoy, due_date__lte=fin_semana).count(),
+            "atrasadas": vencidas.count(),
+        }
+
         return self.success({
-            "vencidas": TareaHoySerializer(tareas.filter(due_date__lt=hoy), many=True).data,
-            "hoy": TareaHoySerializer(tareas.filter(due_date=hoy), many=True).data,
-            "proximas": TareaHoySerializer(tareas.filter(due_date__gt=hoy), many=True).data,
+            "empty": False,
+            "contadores": contadores,
+            "vencidas": TareaHoySerializer(vencidas, many=True).data,
+            "hoy": TareaHoySerializer(hoy_tareas, many=True).data,
+            "proximas": TareaHoySerializer(proximas, many=True).data,
         }, "Tareas obtenidas correctamente.")

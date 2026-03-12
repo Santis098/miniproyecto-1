@@ -152,13 +152,31 @@ class ActivitySerializer(serializers.ModelSerializer):
         )
         return value
 class TareaHoySerializer(serializers.ModelSerializer):
-    progreso = serializers.SerializerMethodField()
+    progreso_horas = serializers.SerializerMethodField()
+    progreso_subtareas = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
-        fields = ['id', 'title', 'due_date', 'horas_estimadas', 'horas_trabajadas', 'progreso', 'difficulty', 'activity_type']
+        fields = [
+            'id', 'title', 'description', 'due_date', 'start_date',
+            'horas_estimadas', 'horas_trabajadas', 'progreso_horas',
+            'progreso_subtareas', 'difficulty', 'activity_type', 'asignatura'
+        ]
 
-    def get_progreso(self, obj):
+    def get_progreso_horas(self, obj):
+        # Progreso basado en horas trabajadas vs estimadas
         if obj.horas_estimadas and obj.horas_estimadas > 0:
             return round((obj.horas_trabajadas / obj.horas_estimadas) * 100, 1)
         return 0
+
+    def get_progreso_subtareas(self, obj):
+        # Progreso basado en subtareas completadas vs total
+        total = obj.subtasks.count()
+        if total == 0:
+            return {"completadas": 0, "total": 0, "porcentaje": 0}
+        completadas = obj.subtasks.filter(is_completed=True).count()
+        return {
+            "completadas": completadas,
+            "total": total,
+            "porcentaje": round((completadas / total) * 100, 1)
+        }
