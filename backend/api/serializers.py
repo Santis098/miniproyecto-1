@@ -20,13 +20,24 @@ class RegisterSerializer(serializers.ModelSerializer):
         }
 
     def validate_username(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Ingresa los datos para el registro.")
+        if len(value.strip()) < 4:
+            raise serializers.ValidationError("Ingresa minimo 4 caracteres.")
         if Usuario.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Este nombre de usuario ya existe.")
+            raise serializers.ValidationError("Este nombre de usuario ya esta registrado.")
         return value
 
     def validate_email(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Ingresa los datos para el registro.")
         if Usuario.objects.filter(email=value).exists():
             raise serializers.ValidationError("Este correo electronico ya esta registrado.")
+        return value
+
+    def validate_password(self, value):
+        if len(value) < 6:
+            raise serializers.ValidationError("Minimo 6 caracteres para contrasena.")
         return value
 
     def validate(self, attrs):
