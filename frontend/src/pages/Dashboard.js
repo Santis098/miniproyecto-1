@@ -82,7 +82,19 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* 6. Sección: Prioridades para Hoy */}
+        {/* 6. Sección: Actividades Atrasadas */}
+        <div className="section-card">
+          <div className="section-header">
+            <span>⚠️</span> Actividades Atrasadas
+          </div>
+          <div className="empty-state">
+            <div className="success-icon">✅</div>
+            <p>No tienes actividades atrasadas</p>
+            <p><strong>¡¡Muy bien, sigue así!!</strong></p>
+          </div>
+        </div>
+
+        {/* 7. Sección: Prioridades para Hoy */}
         <div className="section-card">
           <div className="section-header">
             <span>🕒</span> Prioridades para Hoy
