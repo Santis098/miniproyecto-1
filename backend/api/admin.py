@@ -5,3 +5,4 @@ admin.site.register(Usuario)
 admin.site.register(Asignatura)
 admin.site.register(Activity)
 admin.site.register(Subtask)
+#URBANO ME LA PELA
