@@ -38,7 +38,7 @@ const Login = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          username: email, // Aquí viajará el "Nombre de usuario" que escribas
+          email: email, // Se envía como "email" que es lo que espera el backend
           password: password
         })
       });
