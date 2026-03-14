@@ -75,15 +75,15 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   };
 
   const getProgreso = () => {
-    const progrHoras = actividad.horas_estimadas > 0
-      ? Math.min(100, Math.round((horasTrabajadas / actividad.horas_estimadas) * 100))
-      : 0;
     const progrSubs = subtasks.length > 0
       ? Math.round((subtasks.filter(s => s.is_completed).length / subtasks.length) * 100)
       : 0;
-    // Si hay horas estimadas, usa horas. Si no, usa subtareas. Si ambos, promedio.
-    if (actividad.horas_estimadas > 0 && subtasks.length > 0) return Math.round((progrHoras + progrSubs) / 2);
-    if (actividad.horas_estimadas > 0) return progrHoras;
+    const progrHoras = actividad.horas_estimadas > 0
+      ? Math.min(100, Math.round((horasTrabajadas / actividad.horas_estimadas) * 100))
+      : 0;
+    // Si hay horas trabajadas, combina ambos. Si no, usa solo subtareas.
+    if (horasTrabajadas > 0 && subtasks.length > 0) return Math.round((progrHoras + progrSubs) / 2);
+    if (horasTrabajadas > 0) return progrHoras;
     if (subtasks.length > 0) return progrSubs;
     return 0;
   };
@@ -96,7 +96,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
 
   const progreso = getProgreso();
   const progrSub = getProgresoSubtareas();
-  console.log("DEBUG progreso:", progreso, "subtasks:", subtasks.length, "completadas:", subtasks.filter(s=>s.is_completed).length, "horasTrabajadas:", horasTrabajadas, "horasEstimadas:", actividad.horas_estimadas);
 
   // ===== SUBTAREAS =====
   const crearSubtask = async () => {
