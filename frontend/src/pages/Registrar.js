@@ -23,6 +23,34 @@ const Registrar = () => {
   const [loading, setLoading]     = useState(false);
   const navigate = useNavigate();
 
+  // Mapa de traducciones de errores del backend
+  const traducirError = (campo, mensaje) => {
+    const CAMPO = {
+      username: 'nombre de usuario',
+      email: 'correo electrónico',
+      password: 'contraseña',
+      password2: 'confirmación de contraseña',
+    };
+
+    const TRADUCCIONES = {
+      'This password is too short. It must contain at least 8 characters.': 'La contraseña debe tener al menos 8 caracteres.',
+      'This password is too common.': 'La contraseña es demasiado común. Elige una más segura.',
+      'This password is entirely numeric.': 'La contraseña no puede ser solo números.',
+      'The password is too similar to the username.': 'La contraseña es muy similar al nombre de usuario.',
+      'This field may not be blank.': 'Este campo no puede estar vacío.',
+      'This field is required.': 'Este campo es obligatorio.',
+      'Enter a valid email address.': 'Ingresa un correo electrónico válido.',
+    };
+
+    const msgTraducido = TRADUCCIONES[mensaje] || mensaje;
+    const nombreCampo = CAMPO[campo];
+
+    if (nombreCampo) {
+      return `${msgTraducido.replace(/\.$/, '')} en el campo de ${nombreCampo}.`;
+    }
+    return msgTraducido;
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setErrorMessage(''); setErrorFields([]);
@@ -56,10 +84,11 @@ const Registrar = () => {
       if (response.ok && data.status === 'success') {
         setIsSuccess(true);
       } else {
-        let errorMsg = 'Error al registrar el usuario';
+        let errorMsg = 'Error al registrar el usuario.';
         if (data.data) {
           const firstKey = Object.keys(data.data)[0];
-          errorMsg = data.data[firstKey][0];
+          const firstMsg = Array.isArray(data.data[firstKey]) ? data.data[firstKey][0] : data.data[firstKey];
+          errorMsg = traducirError(firstKey, firstMsg);
         } else if (data.message) {
           errorMsg = data.message;
         }
