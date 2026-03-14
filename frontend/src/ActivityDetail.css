@@ -262,3 +262,34 @@
   border: none; border-radius: 8px; cursor: pointer; font-size: 14px;
 }
 .confirm-btn-eliminar:hover { background: #b91c1c; }
+
+/* ===== HORAS EDITABLES ===== */
+.detail-tiempo-valor-row {
+  display: flex; align-items: center; gap: 8px;
+}
+
+.horas-editar-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; padding: 2px 5px; border-radius: 4px;
+  color: #aaa; transition: background 0.2s;
+}
+.horas-editar-btn:hover { background: #f3f4f6; color: #555; }
+
+.horas-edit-row {
+  display: flex; align-items: center; gap: 6px; margin-top: 2px;
+}
+
+.horas-input {
+  width: 70px; padding: 4px 8px;
+  border: 1px solid #2563eb; border-radius: 6px;
+  font-size: 14px; font-weight: 700; outline: none;
+}
+
+.horas-btn-ok {
+  padding: 4px 8px; background: #16a34a; color: white;
+  border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.horas-btn-cancel {
+  padding: 4px 8px; background: #f3f4f6; color: #555;
+  border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+}

@@ -3,7 +3,7 @@ import "./ActivityDetail.css";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-x936.onrender.com";
 
-function ActivityDetail({ actividad, onClose }) {
+function ActivityDetail({ actividad, onClose, onActualizado }) {
   const [subtasks, setSubtasks]                   = useState([]);
   const [loading, setLoading]                     = useState(true);
   const [mostrarInput, setMostrarInput]           = useState(false);
@@ -13,8 +13,18 @@ function ActivityDetail({ actividad, onClose }) {
   const [editandoTitulo, setEditandoTitulo]       = useState("");
   const [errorEdicion, setErrorEdicion]           = useState("");
   const [confirmarEliminar, setConfirmarEliminar] = useState(null);
+  const [horasTrabajadas, setHorasTrabajadas]     = useState(actividad.horas_trabajadas || 0);
+  const [editandoHoras, setEditandoHoras]         = useState(false);
+  const [horasInput, setHorasInput]               = useState(String(actividad.horas_trabajadas || 0));
 
   const token = localStorage.getItem("token");
+
+  // Formatear fecha de YYYY-MM-DD a DD/MM/YYYY
+  const formatFecha = (f) => {
+    if (!f) return "—";
+    const [y, m, d] = f.split("-");
+    return `${d}/${m}/${y}`;
+  };
 
   const cargarSubtasks = () => {
     if (!actividad) return;
@@ -23,8 +33,8 @@ function ActivityDetail({ actividad, onClose }) {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => {
-        const lista = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      .then(json => {
+        const lista = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
         setSubtasks(lista.filter(st => st.activity === actividad.id));
         setLoading(false);
       })
@@ -32,6 +42,22 @@ function ActivityDetail({ actividad, onClose }) {
   };
 
   useEffect(() => { cargarSubtasks(); }, [actividad]);
+
+  // ===== GUARDAR HORAS TRABAJADAS =====
+  const guardarHoras = async () => {
+    const val = parseFloat(horasInput);
+    if (isNaN(val) || val < 0) return;
+    try {
+      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ horas_trabajadas: val })
+      });
+      setHorasTrabajadas(val);
+      setEditandoHoras(false);
+      if (onActualizado) onActualizado();
+    } catch (err) { console.error(err); }
+  };
 
   const getTipoBadge = (type) => {
     const map = { exam: "Examen", project: "Proyecto", presentation: "Presentación", homework: "Tarea" };
@@ -49,8 +75,17 @@ function ActivityDetail({ actividad, onClose }) {
   };
 
   const getProgreso = () => {
-    if (!actividad.horas_estimadas || actividad.horas_estimadas === 0) return 0;
-    return Math.min(100, Math.round((actividad.horas_trabajadas / actividad.horas_estimadas) * 100));
+    const progrHoras = actividad.horas_estimadas > 0
+      ? Math.min(100, Math.round((horasTrabajadas / actividad.horas_estimadas) * 100))
+      : 0;
+    const progrSubs = subtasks.length > 0
+      ? Math.round((subtasks.filter(s => s.is_completed).length / subtasks.length) * 100)
+      : 0;
+    // Si hay horas estimadas, usa horas. Si no, usa subtareas. Si ambos, promedio.
+    if (actividad.horas_estimadas > 0 && subtasks.length > 0) return Math.round((progrHoras + progrSubs) / 2);
+    if (actividad.horas_estimadas > 0) return progrHoras;
+    if (subtasks.length > 0) return progrSubs;
+    return 0;
   };
 
   const getProgresoSubtareas = () => {
@@ -61,7 +96,9 @@ function ActivityDetail({ actividad, onClose }) {
 
   const progreso = getProgreso();
   const progrSub = getProgresoSubtareas();
+  console.log("DEBUG progreso:", progreso, "subtasks:", subtasks.length, "completadas:", subtasks.filter(s=>s.is_completed).length, "horasTrabajadas:", horasTrabajadas, "horasEstimadas:", actividad.horas_estimadas);
 
+  // ===== SUBTAREAS =====
   const crearSubtask = async () => {
     if (!nuevoTitulo.trim()) { setErrorNuevo("Debe ingresar un titulo."); return; }
     if (nuevoTitulo.trim().length < 3) { setErrorNuevo("Mínimo 3 caracteres."); return; }
@@ -72,7 +109,12 @@ function ActivityDetail({ actividad, onClose }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ title: nuevoTitulo, activity: actividad.id })
       });
-      if (res.status === 201) { setNuevoTitulo(""); setMostrarInput(false); cargarSubtasks(); }
+      if (res.status === 201) {
+        setNuevoTitulo(""); setMostrarInput(false); cargarSubtasks();
+      } else {
+        const err = await res.json();
+        setErrorNuevo(err?.data?.title?.[0] || "Error al crear la subtarea.");
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -91,11 +133,9 @@ function ActivityDetail({ actividad, onClose }) {
     if (!confirmarEliminar) return;
     try {
       await fetch(`${API_BASE}/api/subtasks/${confirmarEliminar.id}/`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` }
       });
-      setConfirmarEliminar(null);
-      cargarSubtasks();
+      setConfirmarEliminar(null); cargarSubtasks();
     } catch (err) { console.error(err); }
   };
 
@@ -139,11 +179,11 @@ function ActivityDetail({ actividad, onClose }) {
             </span>
           </div>
 
-          {/* GRID DE INFO */}
+          {/* GRID INFO */}
           <div className="detail-info-grid">
             <div className="detail-info-item">
               <span className="detail-info-label">Entrega:</span>
-              <span className="detail-info-value">{actividad.due_date}</span>
+              <span className="detail-info-value">{formatFecha(actividad.due_date)}</span>
             </div>
             {actividad.asignatura && (
               <div className="detail-info-item">
@@ -153,7 +193,7 @@ function ActivityDetail({ actividad, onClose }) {
             )}
             <div className="detail-info-item">
               <span className="detail-info-label">Horas:</span>
-              <span className="detail-info-value">{actividad.horas_trabajadas || 0}h / {actividad.horas_estimadas || 0}h</span>
+              <span className="detail-info-value">{horasTrabajadas}h / {actividad.horas_estimadas || 0}h</span>
             </div>
             {actividad.difficulty && (
               <div className="detail-info-item">
@@ -163,7 +203,7 @@ function ActivityDetail({ actividad, onClose }) {
             )}
           </div>
 
-          {/* BARRA DE PROGRESO */}
+          {/* BARRA PROGRESO */}
           <div className="detail-progreso-section">
             <div className="detail-progreso-header">
               <span>Progreso General</span>
@@ -174,13 +214,31 @@ function ActivityDetail({ actividad, onClose }) {
             </div>
           </div>
 
-          {/* TIEMPO */}
+          {/* TIEMPO — editable */}
           <div className="detail-tiempo-grid">
             <div className="detail-tiempo-item">
               <span className="detail-tiempo-icon">🕐</span>
               <div>
                 <div className="detail-tiempo-label">Tiempo Invertido</div>
-                <div className="detail-tiempo-valor">{actividad.horas_trabajadas || 0}h</div>
+                {editandoHoras ? (
+                  <div className="horas-edit-row">
+                    <input
+                      className="horas-input"
+                      type="number" min="0" step="0.5"
+                      value={horasInput}
+                      onChange={e => setHorasInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") guardarHoras(); if (e.key === "Escape") setEditandoHoras(false); }}
+                      autoFocus
+                    />
+                    <button className="horas-btn-ok" onClick={guardarHoras}>✓</button>
+                    <button className="horas-btn-cancel" onClick={() => setEditandoHoras(false)}>✕</button>
+                  </div>
+                ) : (
+                  <div className="detail-tiempo-valor-row">
+                    <span className="detail-tiempo-valor">{horasTrabajadas}h</span>
+                    <button className="horas-editar-btn" onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }} title="Editar horas">✏️</button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="detail-tiempo-item">
@@ -191,17 +249,14 @@ function ActivityDetail({ actividad, onClose }) {
             </div>
           </div>
 
-          {/* ENCABEZADO SUBTAREAS */}
+          {/* SUBTAREAS */}
           <div className="detail-subtareas-header">
-            <span className="detail-subtareas-titulo">
-              Tareas ({progrSub.completadas}/{progrSub.total})
-            </span>
+            <span className="detail-subtareas-titulo">Tareas ({progrSub.completadas}/{progrSub.total})</span>
             {!mostrarInput && (
               <button className="btn-agregar-sub" onClick={() => setMostrarInput(true)}>+ Agregar</button>
             )}
           </div>
 
-          {/* LISTA SUBTAREAS */}
           {loading ? (
             <p className="detail-loading">Cargando subtareas...</p>
           ) : subtasks.length === 0 ? (
@@ -210,22 +265,14 @@ function ActivityDetail({ actividad, onClose }) {
             <ul className="detail-list">
               {subtasks.map(st => (
                 <li key={st.id} className={`detail-item ${st.is_completed ? "done" : ""}`}>
-                  <input
-                    type="checkbox"
-                    className="detail-checkbox"
-                    checked={st.is_completed}
-                    onChange={() => toggleSubtask(st)}
-                  />
+                  <input type="checkbox" className="detail-checkbox" checked={st.is_completed} onChange={() => toggleSubtask(st)} />
                   {editandoId === st.id ? (
                     <div className="edit-col">
                       <div className="edit-row">
-                        <input
-                          className="edit-input"
-                          value={editandoTitulo}
+                        <input className="edit-input" value={editandoTitulo}
                           onChange={e => { setEditandoTitulo(e.target.value); setErrorEdicion(""); }}
                           onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
-                          autoFocus
-                        />
+                          autoFocus />
                         <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)}>Guardar</button>
                         <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
                       </div>
@@ -236,8 +283,8 @@ function ActivityDetail({ actividad, onClose }) {
                   )}
                   {editandoId !== st.id && (
                     <div className="st-acciones">
-                      <button className="btn-icon-sub" title="Editar" onClick={() => iniciarEdicion(st)}>✏️</button>
-                      <button className="btn-icon-sub btn-icon-del" title="Eliminar" onClick={() => setConfirmarEliminar(st)}>🗑️</button>
+                      <button className="btn-icon-sub" onClick={() => iniciarEdicion(st)}>✏️</button>
+                      <button className="btn-icon-sub btn-icon-del" onClick={() => setConfirmarEliminar(st)}>🗑️</button>
                     </div>
                   )}
                 </li>
@@ -245,18 +292,13 @@ function ActivityDetail({ actividad, onClose }) {
             </ul>
           )}
 
-          {/* INPUT NUEVA SUBTAREA */}
           {mostrarInput && (
             <div className="subtask-add-col">
               <div className="subtask-input">
-                <input
-                  type="text"
-                  placeholder="Ej: estudiar derivadas"
-                  value={nuevoTitulo}
+                <input type="text" placeholder="Ej: estudiar derivadas" value={nuevoTitulo}
                   onChange={e => { setNuevoTitulo(e.target.value); setErrorNuevo(""); }}
                   onKeyDown={e => { if (e.key === "Enter") crearSubtask(); }}
-                  autoFocus
-                />
+                  autoFocus />
                 <button className="btn-guardar-sub" onClick={crearSubtask}>Guardar</button>
                 <button className="btn-cancelar-sub" onClick={() => { setMostrarInput(false); setNuevoTitulo(""); setErrorNuevo(""); }}>Cancelar</button>
               </div>
@@ -267,7 +309,6 @@ function ActivityDetail({ actividad, onClose }) {
         </div>
       </div>
 
-      {/* MODAL CONFIRMAR ELIMINAR */}
       {confirmarEliminar && (
         <div className="confirm-overlay">
           <div className="confirm-modal">
