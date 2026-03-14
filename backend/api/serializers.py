@@ -99,6 +99,7 @@ class ActivitySerializer(serializers.ModelSerializer):
         allow_blank=True,
         write_only=True
     )
+    asignatura_detalle = serializers.SerializerMethodField()
 
     title = serializers.CharField(required=True)
     due_date = serializers.DateField(required=True)
@@ -110,6 +111,11 @@ class ActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Activity
         fields = '__all__'
+
+    def get_asignatura_detalle(self, obj):
+        if obj.asignatura:
+            return obj.asignatura.nombre
+        return None
 
     def validate_due_date(self, value):
         if value < timezone.now().date():
