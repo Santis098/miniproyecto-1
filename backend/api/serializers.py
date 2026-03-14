@@ -93,6 +93,11 @@ class SubtaskSerializer(serializers.ModelSerializer):
 
 class ActivitySerializer(serializers.ModelSerializer):
     subtasks = SubtaskSerializer(many=True, required=False, write_only=True)
+    asignatura = serializers.PrimaryKeyRelatedField(
+        queryset=Asignatura.objects.all(),
+        required=False,
+        allow_null=True
+    )
 
     title = serializers.CharField(required=True)
     due_date = serializers.DateField(required=True)
