@@ -13,18 +13,17 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const [editandoTitulo, setEditandoTitulo]       = useState("");
   const [errorEdicion, setErrorEdicion]           = useState("");
   const [confirmarEliminar, setConfirmarEliminar] = useState(null);
-  const [horasTrabajadas, setHorasTrabajadas]     = useState(actividad.horas_trabajadas || 0);
+  const [horasTrabajadas, setHorasTrabajadas]     = useState(actividad?.horas_trabajadas || 0);
   const [editandoHoras, setEditandoHoras]         = useState(false);
-  const [horasInput, setHorasInput]               = useState(String(actividad.horas_trabajadas || 0));
+  const [horasInput, setHorasInput]               = useState(String(actividad?.horas_trabajadas || 0));
 
   const token = localStorage.getItem("token");
 
-  const [loadingToggle, setLoadingToggle]   = useState(null);
+  const [loadingToggle, setLoadingToggle]     = useState(null);
   const [loadingEliminar, setLoadingEliminar] = useState(null);
-  const [loadingGuardar, setLoadingGuardar] = useState(false);
-  const [loadingEditar, setLoadingEditar]   = useState(null);
+  const [loadingGuardar, setLoadingGuardar]   = useState(false);
+  const [loadingEditar, setLoadingEditar]     = useState(null);
 
-  // Formatear fecha de YYYY-MM-DD a DD/MM/YYYY
   const formatFecha = (f) => {
     if (!f) return "—";
     const [y, m, d] = f.split("-");
@@ -47,6 +46,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   };
 
   useEffect(() => { cargarSubtasks(); }, [actividad]);
+
+  if (!actividad) return null;
 
   // ===== GUARDAR HORAS TRABAJADAS =====
   const guardarHoras = async () => {
