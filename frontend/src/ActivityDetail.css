@@ -293,3 +293,7 @@
   padding: 4px 8px; background: #f3f4f6; color: #555;
   border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
 }
+
+/* ===== ICONOS SVG ===== */
+.icon-svg { width: 16px; height: 16px; display: inline-block; vertical-align: middle; }
+.spinner-svg { width: 16px; height: 16px; display: inline-block; vertical-align: middle; animation: spin 0.7s linear infinite; }

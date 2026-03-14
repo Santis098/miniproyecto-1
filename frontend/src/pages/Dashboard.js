@@ -1,10 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
-import CreateActivity from '../CreateActivity';
+import CreateActivity, { EditActivity } from '../CreateActivity';
 import ActivityDetail from '../ActivityDetail';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
+const IconEdit = () => (
+  <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>
+);
+const IconTrash = () => (
+  <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    <path d="M10 11v6M14 11v6"/>
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+  </svg>
+);
+const IconSpinner = () => (
+  <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle',animation:'spin 0.7s linear infinite'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/>
+    <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+  </svg>
+);
 const FILTROS = ['Progreso', 'Dificultad', 'Horas estimadas', 'Asignatura', 'Fecha'];
 const FILTRO_PARAM = { 'Progreso': 'progreso', 'Dificultad': 'dificultad', 'Horas estimadas': 'horas_estimadas', 'Asignatura': 'asignatura', 'Fecha': 'fecha' };
 
@@ -16,6 +36,10 @@ const Dashboard = () => {
   const [loadingSeccion, setLoadingSeccion]   = useState({ hoy: false, proximas: false });
   const [mostrarCrear, setMostrarCrear]       = useState(false);
   const [actividadDetalle, setActividadDetalle] = useState(null);
+  const [confirmarEliminar, setConfirmarEliminar] = useState(null);
+  const [eliminando, setEliminando]               = useState(false);
+  const [exitoMsg, setExitoMsg]                   = useState('');
+  const [editandoActividad, setEditandoActividad] = useState(null);
   const [filtroHoy, setFiltroHoy]             = useState('Progreso');
   const [filtroProximas, setFiltroProximas]   = useState('Fecha');
   const [dropdownHoy, setDropdownHoy]         = useState(false);
@@ -77,6 +101,21 @@ const Dashboard = () => {
     setLoadingSeccion(s => ({ ...s, proximas: false }));
   };
 
+  const eliminarActividad = async (actividad) => {
+    setEliminando(true);
+    try {
+      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setConfirmarEliminar(null);
+      setExitoMsg(`"${actividad.title}" eliminada correctamente.`);
+      cargarTareas();
+      setTimeout(() => setExitoMsg(''), 3000);
+    } catch (err) { console.error(err); }
+    setEliminando(false);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
@@ -100,8 +139,8 @@ const Dashboard = () => {
   };
 
   const ActividadCard = ({ actividad, idx }) => (
-    <div className="actividad-fila" onClick={() => setActividadDetalle(actividad)}>
-      <div className="actividad-fila-izq">
+    <div style={{display:'flex', flexDirection:'row', alignItems:'center', justifyContent:'space-between', padding:'14px 16px', borderBottom:'1px solid #f1f1f1', borderRadius:'8px', transition:'background 0.15s', cursor:'default'}}>
+      <div style={{display:'flex', flexDirection:'row', alignItems:'center', gap:14, flex:1, minWidth:0, cursor:'pointer'}} onClick={() => setActividadDetalle(actividad)}>
         <div className="activity-number">{idx + 1}</div>
         <div>
           <div className="actividad-fila-titulo">{actividad.title}</div>
@@ -113,11 +152,12 @@ const Dashboard = () => {
               </span>
             )}
           </div>
+          <div style={{fontSize:12, color:'#aaa'}}>{actividad.horas_trabajadas||0}h / {actividad.horas_estimadas||0}h</div>
         </div>
       </div>
-      <div className="actividad-fila-der">
-        <span style={{fontSize:12, color:'#888'}}>{actividad.horas_trabajadas||0}h / {actividad.horas_estimadas||0}h</span>
-        <span style={{fontSize:12, color:'#aaa'}}>›</span>
+      <div style={{display:'flex', flexDirection:'row', alignItems:'center', gap:4, flexShrink:0, marginLeft:16}}>
+        <button className="card-btn-edit" title="Editar" onClick={e => { e.stopPropagation(); setEditandoActividad(actividad); }}><IconEdit /></button>
+        <button className="card-btn-del" title="Eliminar" onClick={e => { e.stopPropagation(); setConfirmarEliminar(actividad); }}><IconTrash /></button>
       </div>
     </div>
   );
@@ -274,6 +314,14 @@ const Dashboard = () => {
         )}
       </main>
 
+      {editandoActividad && (
+        <EditActivity
+          actividad={editandoActividad}
+          onClose={() => setEditandoActividad(null)}
+          onActualizado={() => { setEditandoActividad(null); cargarTareas(); setExitoMsg('Actividad actualizada correctamente.'); setTimeout(() => setExitoMsg(''), 3000); }}
+        />
+      )}
+
       {mostrarCrear && (
         <CreateActivity
           onClose={() => setMostrarCrear(false)}
@@ -287,6 +335,28 @@ const Dashboard = () => {
           onClose={() => setActividadDetalle(null)}
           onActualizado={() => cargarTareas()}
         />
+      )}
+
+      {/* MODAL CONFIRMAR ELIMINAR */}
+      {confirmarEliminar && (
+        <div className="confirm-overlay-dash">
+          <div className="confirm-modal-dash">
+            <h3>Eliminar actividad</h3>
+            <p>¿Estás seguro que deseas eliminar <strong>"{confirmarEliminar.title}"</strong>?</p>
+            <p className="confirm-aviso-dash">Esta acción no se puede deshacer.</p>
+            <div className="confirm-botones-dash">
+              <button className="confirm-btn-cancelar-dash" onClick={() => setConfirmarEliminar(null)} disabled={eliminando}>Cancelar</button>
+              <button className="confirm-btn-eliminar-dash" onClick={() => eliminarActividad(confirmarEliminar)} disabled={eliminando}>
+                {eliminando ? <IconSpinner /> : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MENSAJE ÉXITO */}
+      {exitoMsg && (
+        <div className="exito-toast">✅ {exitoMsg}</div>
       )}
 
     </div>

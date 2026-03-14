@@ -3,6 +3,29 @@ import "./ActivityDetail.css";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-x936.onrender.com";
 
+const IconEdit = () => (
+  <svg className="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>
+);
+
+const IconTrash = () => (
+  <svg className="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    <path d="M10 11v6M14 11v6"/>
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+  </svg>
+);
+
+const IconSpinner = () => (
+  <svg className="spinner-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/>
+    <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+  </svg>
+);
+
 function ActivityDetail({ actividad, onClose, onActualizado }) {
   const token = localStorage.getItem("token");
 
@@ -239,7 +262,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                       onKeyDown={e => { if (e.key === "Enter") guardarHoras(); if (e.key === "Escape") setEditandoHoras(false); }}
                       autoFocus />
                     <button className="horas-btn-ok" onClick={guardarHoras} disabled={loadingGuardar}>
-                      {loadingGuardar ? "..." : "✓"}
+                      {loadingGuardar ? <IconSpinner /> : "✓"}
                     </button>
                     <button className="horas-btn-cancel" onClick={() => setEditandoHoras(false)}>✕</button>
                   </div>
@@ -247,7 +270,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                   <div className="detail-tiempo-valor-row">
                     <span className="detail-tiempo-valor">{horasTrabajadas}h</span>
                     <button className="horas-editar-btn"
-                      onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }}>✏️</button>
+                      onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }}><IconEdit /></button>
                   </div>
                 )}
               </div>
@@ -289,7 +312,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                           onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
                           autoFocus />
                         <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)} disabled={loadingEditar === st.id}>
-                          {loadingEditar === st.id ? "..." : "Guardar"}
+                          {loadingEditar === st.id ? <IconSpinner /> : "Guardar"}
                         </button>
                         <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
                       </div>
@@ -300,8 +323,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                   )}
                   {editandoId !== st.id && (
                     <div className="st-acciones">
-                      <button className="btn-icon-sub" onClick={() => iniciarEdicion(st)}>✏️</button>
-                      <button className="btn-icon-sub btn-icon-del" onClick={() => setConfirmarEliminar(st)}>🗑️</button>
+                      <button className="btn-icon-sub" onClick={() => iniciarEdicion(st)}><IconEdit /></button>
+                      <button className="btn-icon-sub btn-icon-del" onClick={() => setConfirmarEliminar(st)}><IconTrash /></button>
                     </div>
                   )}
                 </li>
@@ -335,7 +358,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             <div className="confirm-botones">
               <button className="confirm-btn-cancelar" onClick={() => setConfirmarEliminar(null)}>Cancelar</button>
               <button className="confirm-btn-eliminar" onClick={confirmarYEliminar} disabled={!!loadingEliminar}>
-                {loadingEliminar ? "Eliminando..." : "Sí, eliminar"}
+                {loadingEliminar ? <IconSpinner /> : "Sí, eliminar"}
               </button>
             </div>
           </div>

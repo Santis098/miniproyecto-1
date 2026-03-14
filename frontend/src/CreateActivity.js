@@ -1,328 +1,396 @@
-import React, { useEffect, useState } from "react";
-import "./ActivityDetail.css";
+import React, { useState } from 'react';
+import './CreateActivity.css';
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-x936.onrender.com";
+const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
 
-function ActivityDetail({ actividad, onClose, onActualizado }) {
-  const [subtasks, setSubtasks]                   = useState([]);
-  const [loading, setLoading]                     = useState(true);
-  const [mostrarInput, setMostrarInput]           = useState(false);
-  const [nuevoTitulo, setNuevoTitulo]             = useState("");
-  const [errorNuevo, setErrorNuevo]               = useState("");
-  const [editandoId, setEditandoId]               = useState(null);
-  const [editandoTitulo, setEditandoTitulo]       = useState("");
-  const [errorEdicion, setErrorEdicion]           = useState("");
-  const [confirmarEliminar, setConfirmarEliminar] = useState(null);
-  const [horasTrabajadas, setHorasTrabajadas]     = useState(actividad.horas_trabajadas || 0);
-  const [editandoHoras, setEditandoHoras]         = useState(false);
-  const [horasInput, setHorasInput]               = useState(String(actividad.horas_trabajadas || 0));
+const IconTrash = () => (
+  <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    <path d="M10 11v6M14 11v6"/>
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+  </svg>
+);
 
-  const token = localStorage.getItem("token");
+const IconEdit = () => (
+  <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>
+);
 
-  // Formatear fecha de YYYY-MM-DD a DD/MM/YYYY
-  const formatFecha = (f) => {
-    if (!f) return "—";
-    const [y, m, d] = f.split("-");
-    return `${d}/${m}/${y}`;
+const IconSpinner = () => (
+  <svg style={{width:18,height:18,display:'inline-block',verticalAlign:'middle',animation:'spin 0.7s linear infinite'}} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/>
+    <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+  </svg>
+);
+
+function CreateActivity({ onClose, onActivityCreated }) {
+  const [titulo, setTitulo]               = useState('');
+  const [descripcion, setDescripcion]     = useState('');
+  const [asignatura, setAsignatura]       = useState('');
+  const [tipo, setTipo]                   = useState('');
+  const [dificultad, setDificultad]       = useState('');
+  const [fecha, setFecha]                 = useState('');
+  const [horasEstimadas, setHorasEstimadas] = useState('');
+  const [subtasks, setSubtasks]           = useState([]);
+  const [nuevoSub, setNuevoSub]           = useState('');
+  const [errorSub, setErrorSub]           = useState('');
+  const [editandoSubId, setEditandoSubId] = useState(null);
+  const [editandoSubTitulo, setEditandoSubTitulo] = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState('');
+  const [success, setSuccess]             = useState(false);
+
+  const agregarSubtask = () => {
+    if (!nuevoSub.trim()) { setErrorSub('Ingresa un titulo.'); return; }
+    if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
+    setSubtasks([...subtasks, { titulo: nuevoSub.trim(), id: Date.now() }]);
+    setNuevoSub(''); setErrorSub('');
   };
 
-  const cargarSubtasks = () => {
-    if (!actividad) return;
-    setLoading(true);
-    fetch(`${API_BASE}/api/subtasks/`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(json => {
-        const lista = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-        setSubtasks(lista.filter(st => st.activity === actividad.id));
-        setLoading(false);
-      })
-      .catch(err => { console.error(err); setLoading(false); });
+  const eliminarSubtask = (id) => setSubtasks(subtasks.filter(s => s.id !== id));
+
+  const iniciarEdicionSub = (st) => { setEditandoSubId(st.id); setEditandoSubTitulo(st.titulo); };
+  const guardarEdicionSub = (id) => {
+    if (!editandoSubTitulo.trim() || editandoSubTitulo.trim().length < 3) return;
+    setSubtasks(subtasks.map(s => s.id === id ? { ...s, titulo: editandoSubTitulo.trim() } : s));
+    setEditandoSubId(null); setEditandoSubTitulo('');
   };
 
-  useEffect(() => { cargarSubtasks(); }, [actividad]);
+  const manejarEnvio = async () => {
+    if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
+    if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
+    if (!descripcion.trim())      { setError('Debe ingresar una descripción.'); return; }
+    if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
+    if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
+    if (!fecha)                   { setError('Selecciona una fecha de actividad.'); return; }
+    if (subtasks.length === 0)    { setError('Agrega al menos una subtarea.'); return; }
 
-  // ===== GUARDAR HORAS TRABAJADAS =====
-  const guardarHoras = async () => {
-    const val = parseFloat(horasInput);
-    if (isNaN(val) || val < 0) return;
+    setError(''); setLoading(true);
+    const token = localStorage.getItem('token');
+
+    const nuevaActividad = {
+      title: titulo,
+      description: descripcion,
+      start_date: fecha,
+      due_date: fecha,
+      activity_type: tipo,
+      difficulty: dificultad,
+      horas_estimadas: horasEstimadas ? parseFloat(horasEstimadas) : 0,
+    };
+
     try {
-      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ horas_trabajadas: val })
+      const res = await fetch(API_BASE + '/api/activities/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(nuevaActividad),
       });
-      setHorasTrabajadas(val);
-      setEditandoHoras(false);
-      if (onActualizado) onActualizado();
-    } catch (err) { console.error(err); }
-  };
 
-  const getTipoBadge = (type) => {
-    const map = { exam: "Examen", project: "Proyecto", presentation: "Presentación", homework: "Tarea" };
-    return map[type?.toLowerCase()] || type || "—";
-  };
-
-  const getDificultadLabel = (d) => {
-    const map = { baja: "Prioridad Baja", media: "Prioridad Media", alta: "Prioridad Alta", critica: "Prioridad Crítica" };
-    return map[d?.toLowerCase()] || d || "—";
-  };
-
-  const getDificultadClass = (d) => {
-    const map = { baja: "badge-baja", media: "badge-media", alta: "badge-alta", critica: "badge-critica" };
-    return map[d?.toLowerCase()] || "badge-media";
-  };
-
-  const getProgreso = () => {
-    const progrHoras = actividad.horas_estimadas > 0
-      ? Math.min(100, Math.round((horasTrabajadas / actividad.horas_estimadas) * 100))
-      : 0;
-    const progrSubs = subtasks.length > 0
-      ? Math.round((subtasks.filter(s => s.is_completed).length / subtasks.length) * 100)
-      : 0;
-    // Si hay horas estimadas, usa horas. Si no, usa subtareas. Si ambos, promedio.
-    if (actividad.horas_estimadas > 0 && subtasks.length > 0) return Math.round((progrHoras + progrSubs) / 2);
-    if (actividad.horas_estimadas > 0) return progrHoras;
-    if (subtasks.length > 0) return progrSubs;
-    return 0;
-  };
-
-  const getProgresoSubtareas = () => {
-    if (subtasks.length === 0) return { completadas: 0, total: 0 };
-    const completadas = subtasks.filter(s => s.is_completed).length;
-    return { completadas, total: subtasks.length };
-  };
-
-  const progreso = getProgreso();
-  const progrSub = getProgresoSubtareas();
-
-  // ===== SUBTAREAS =====
-  const crearSubtask = async () => {
-    if (!nuevoTitulo.trim()) { setErrorNuevo("Debe ingresar un titulo."); return; }
-    if (nuevoTitulo.trim().length < 3) { setErrorNuevo("Mínimo 3 caracteres."); return; }
-    setErrorNuevo("");
-    try {
-      const res = await fetch(`${API_BASE}/api/subtasks/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: nuevoTitulo, activity: actividad.id })
-      });
       if (res.status === 201) {
-        setNuevoTitulo(""); setMostrarInput(false); cargarSubtasks();
+        const data = await res.json();
+        const actividadId = data?.data?.id;
+        if (actividadId && subtasks.length > 0) {
+          await Promise.all(subtasks.map(st =>
+            fetch(API_BASE + '/api/subtasks/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ title: st.titulo, activity: actividadId })
+            })
+          ));
+        }
+        setSuccess(true); setLoading(false);
+        setTimeout(() => { if (onActivityCreated) onActivityCreated(); if (onClose) onClose(); }, 1500);
       } else {
-        const err = await res.json();
-        setErrorNuevo(err?.data?.title?.[0] || "Error al crear la subtarea.");
+        const datos = await res.json();
+        const errData = datos?.data || datos;
+        if (errData?.title) setError('Titulo: ' + errData.title[0]);
+        else if (errData?.due_date) setError('Fecha: ' + errData.due_date[0]);
+        else setError('Datos incorrectos. Verifica el formulario.');
+        setLoading(false);
       }
-    } catch (err) { console.error(err); }
-  };
-
-  const toggleSubtask = async (st) => {
-    try {
-      await fetch(`${API_BASE}/api/subtasks/${st.id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ is_completed: !st.is_completed })
-      });
-      cargarSubtasks();
-    } catch (err) { console.error(err); }
-  };
-
-  const confirmarYEliminar = async () => {
-    if (!confirmarEliminar) return;
-    try {
-      await fetch(`${API_BASE}/api/subtasks/${confirmarEliminar.id}/`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${token}` }
-      });
-      setConfirmarEliminar(null); cargarSubtasks();
-    } catch (err) { console.error(err); }
-  };
-
-  const iniciarEdicion = (st) => { setEditandoId(st.id); setEditandoTitulo(st.title); setErrorEdicion(""); };
-  const cancelarEdicion = () => { setEditandoId(null); setEditandoTitulo(""); setErrorEdicion(""); };
-
-  const guardarEdicion = async (id) => {
-    if (!editandoTitulo.trim()) { setErrorEdicion("Debe ingresar un titulo."); return; }
-    if (editandoTitulo.trim().length < 3) { setErrorEdicion("Mínimo 3 caracteres."); return; }
-    setErrorEdicion("");
-    try {
-      await fetch(`${API_BASE}/api/subtasks/${id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: editandoTitulo })
-      });
-      setEditandoId(null); setEditandoTitulo(""); cargarSubtasks();
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      setError('Error de conexión con el servidor.');
+      setLoading(false);
+    }
   };
 
   return (
-    <>
-      <div className="detail-overlay" onClick={onClose}>
-        <div className="detail-modal" onClick={e => e.stopPropagation()}>
+    <div className="ca-overlay">
+      <div className="ca-modal">
 
-          {/* HEADER */}
-          <div className="detail-header">
-            <div className="detail-header-text">
-              <h2 className="detail-title">{actividad.title}</h2>
-              {actividad.description && <p className="detail-description">{actividad.description}</p>}
-            </div>
-            <button className="detail-close-btn" onClick={onClose}>✕</button>
-          </div>
-
-          {/* BADGES */}
-          <div className="detail-badges">
-            <span className="badge badge-tipo">{getTipoBadge(actividad.activity_type)}</span>
-            <span className="badge badge-estado">En Progreso</span>
-            <span className={`badge ${getDificultadClass(actividad.difficulty)}`}>
-              {getDificultadLabel(actividad.difficulty)}
-            </span>
-          </div>
-
-          {/* GRID INFO */}
-          <div className="detail-info-grid">
-            <div className="detail-info-item">
-              <span className="detail-info-label">Entrega:</span>
-              <span className="detail-info-value">{formatFecha(actividad.due_date)}</span>
-            </div>
-            {actividad.asignatura && (
-              <div className="detail-info-item">
-                <span className="detail-info-label">Asignatura:</span>
-                <span className="detail-info-value">{actividad.asignatura}</span>
-              </div>
-            )}
-            <div className="detail-info-item">
-              <span className="detail-info-label">Horas:</span>
-              <span className="detail-info-value">{horasTrabajadas}h / {actividad.horas_estimadas || 0}h</span>
-            </div>
-            {actividad.difficulty && (
-              <div className="detail-info-item">
-                <span className="detail-info-label">Dificultad:</span>
-                <span className="detail-info-value" style={{textTransform:"capitalize"}}>{actividad.difficulty}</span>
-              </div>
-            )}
-          </div>
-
-          {/* BARRA PROGRESO */}
-          <div className="detail-progreso-section">
-            <div className="detail-progreso-header">
-              <span>Progreso General</span>
-              <span className={`detail-progreso-pct ${progreso < 50 ? "pct-rojo" : "pct-verde"}`}>{progreso}%</span>
-            </div>
-            <div className="detail-progreso-bar-bg">
-              <div className="detail-progreso-bar-fill" style={{ width: `${progreso}%` }} />
-            </div>
-          </div>
-
-          {/* TIEMPO — editable */}
-          <div className="detail-tiempo-grid">
-            <div className="detail-tiempo-item">
-              <span className="detail-tiempo-icon">🕐</span>
-              <div>
-                <div className="detail-tiempo-label">Tiempo Invertido</div>
-                {editandoHoras ? (
-                  <div className="horas-edit-row">
-                    <input
-                      className="horas-input"
-                      type="number" min="0" step="0.5"
-                      value={horasInput}
-                      onChange={e => setHorasInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") guardarHoras(); if (e.key === "Escape") setEditandoHoras(false); }}
-                      autoFocus
-                    />
-                    <button className="horas-btn-ok" onClick={guardarHoras}>✓</button>
-                    <button className="horas-btn-cancel" onClick={() => setEditandoHoras(false)}>✕</button>
-                  </div>
-                ) : (
-                  <div className="detail-tiempo-valor-row">
-                    <span className="detail-tiempo-valor">{horasTrabajadas}h</span>
-                    <button className="horas-editar-btn" onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }} title="Editar horas">✏️</button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="detail-tiempo-item">
-              <div>
-                <div className="detail-tiempo-label">Tiempo Estimado</div>
-                <div className="detail-tiempo-valor">{actividad.horas_estimadas || 0}h</div>
-              </div>
-            </div>
-          </div>
-
-          {/* SUBTAREAS */}
-          <div className="detail-subtareas-header">
-            <span className="detail-subtareas-titulo">Tareas ({progrSub.completadas}/{progrSub.total})</span>
-            {!mostrarInput && (
-              <button className="btn-agregar-sub" onClick={() => setMostrarInput(true)}>+ Agregar</button>
-            )}
-          </div>
-
-          {loading ? (
-            <p className="detail-loading">Cargando subtareas...</p>
-          ) : subtasks.length === 0 ? (
-            <p className="detail-empty-sub">No hay subtareas aún.</p>
-          ) : (
-            <ul className="detail-list">
-              {subtasks.map(st => (
-                <li key={st.id} className={`detail-item ${st.is_completed ? "done" : ""}`}>
-                  <input type="checkbox" className="detail-checkbox" checked={st.is_completed} onChange={() => toggleSubtask(st)} />
-                  {editandoId === st.id ? (
-                    <div className="edit-col">
-                      <div className="edit-row">
-                        <input className="edit-input" value={editandoTitulo}
-                          onChange={e => { setEditandoTitulo(e.target.value); setErrorEdicion(""); }}
-                          onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
-                          autoFocus />
-                        <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)}>Guardar</button>
-                        <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
-                      </div>
-                      {errorEdicion && <p className="st-error-msg">{errorEdicion}</p>}
-                    </div>
-                  ) : (
-                    <span className={`st-titulo-texto ${st.is_completed ? "tachado" : ""}`}>{st.title}</span>
-                  )}
-                  {editandoId !== st.id && (
-                    <div className="st-acciones">
-                      <button className="btn-icon-sub" onClick={() => iniciarEdicion(st)}>✏️</button>
-                      <button className="btn-icon-sub btn-icon-del" onClick={() => setConfirmarEliminar(st)}>🗑️</button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {mostrarInput && (
-            <div className="subtask-add-col">
-              <div className="subtask-input">
-                <input type="text" placeholder="Ej: estudiar derivadas" value={nuevoTitulo}
-                  onChange={e => { setNuevoTitulo(e.target.value); setErrorNuevo(""); }}
-                  onKeyDown={e => { if (e.key === "Enter") crearSubtask(); }}
-                  autoFocus />
-                <button className="btn-guardar-sub" onClick={crearSubtask}>Guardar</button>
-                <button className="btn-cancelar-sub" onClick={() => { setMostrarInput(false); setNuevoTitulo(""); setErrorNuevo(""); }}>Cancelar</button>
-              </div>
-              {errorNuevo && <p className="st-error-msg">{errorNuevo}</p>}
-            </div>
-          )}
-
+        {/* HEADER */}
+        <div className="ca-header">
+          <h2 className="ca-titulo">Nueva Actividad</h2>
+          <button className="ca-cerrar" onClick={onClose}>✕</button>
         </div>
+
+        {success && <div className="ca-mensaje ca-exito">✅ Actividad creada exitosamente. Cerrando...</div>}
+        {error   && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
+
+        {!success && (
+          <div className="ca-form">
+
+            {/* TITULO */}
+            <div className="ca-campo">
+              <label className="ca-label">Título *</label>
+              <input className="ca-input" type="text" placeholder="Ej: Investigar sobre el medio ambiente"
+                value={titulo} onChange={e => setTitulo(e.target.value)} />
+            </div>
+
+            {/* DESCRIPCION */}
+            <div className="ca-campo">
+              <label className="ca-label">Descripción</label>
+              <textarea className="ca-textarea" placeholder="Describe la actividad o notas importante..."
+                value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
+            </div>
+
+            {/* ASIGNATURA */}
+            <div className="ca-campo">
+              <label className="ca-label">Asignatura *</label>
+              <input className="ca-input" type="text" placeholder="Ej: Impactos Ambientales"
+                value={asignatura} onChange={e => setAsignatura(e.target.value)} />
+            </div>
+
+            {/* TIPO Y PRIORIDAD */}
+            <div className="ca-fila-2">
+              <div className="ca-campo">
+                <label className="ca-label">Tipo *</label>
+                <div className="ca-select-wrapper">
+                  <select className="ca-select" value={tipo} onChange={e => setTipo(e.target.value)}>
+                    <option value="">Selecciona...</option>
+                    <option value="homework">Tarea</option>
+                    <option value="exam">Examen</option>
+                    <option value="presentation">Presentación</option>
+                    <option value="project">Proyecto</option>
+                  </select>
+                </div>
+              </div>
+              <div className="ca-campo">
+                <label className="ca-label">Prioridad *</label>
+                <div className="ca-select-wrapper">
+                  <select className="ca-select" value={dificultad} onChange={e => setDificultad(e.target.value)}>
+                    <option value="">Selecciona...</option>
+                    <option value="baja">Baja</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                    <option value="critica">Crítica</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* FECHA Y HORAS */}
+            <div className="ca-fila-2">
+              <div className="ca-campo">
+                <label className="ca-label">Fecha de actividad *</label>
+                <div className="ca-select-wrapper">
+                  <input className="ca-input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+                </div>
+              </div>
+              <div className="ca-campo">
+                <label className="ca-label">Horas estimadas*</label>
+                <div className="ca-horas-wrapper">
+                  <input className="ca-input ca-input-horas" type="number" min="0" step="1" placeholder="00 h"
+                    value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            {/* SUBTAREAS */}
+            <div className="ca-campo">
+              <label className="ca-label">Subtarea</label>
+
+              {subtasks.length > 0 && (
+                <ul className="ca-subtasks-lista">
+                  {subtasks.map(st => (
+                    <li key={st.id} className="ca-subtask-item">
+                      {editandoSubId === st.id ? (
+                        <>
+                          <input className="ca-input ca-subtask-edit-input" type="text"
+                            value={editandoSubTitulo}
+                            onChange={e => setEditandoSubTitulo(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') guardarEdicionSub(st.id); if (e.key === 'Escape') setEditandoSubId(null); }}
+                            autoFocus />
+                          <button className="ca-sub-btn ca-sub-btn-ok" type="button" onClick={() => guardarEdicionSub(st.id)}>✓</button>
+                          <button className="ca-sub-btn ca-sub-btn-cancel" type="button" onClick={() => setEditandoSubId(null)}>✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="ca-subtask-punto">⊕</span>
+                          <span className="ca-subtask-texto">{st.titulo}</span>
+                          <div className="ca-subtask-acciones">
+                            <button className="ca-sub-btn ca-sub-btn-edit" type="button" onClick={() => iniciarEdicionSub(st)}><IconEdit /></button>
+                            <button className="ca-sub-btn ca-sub-btn-del" type="button" onClick={() => eliminarSubtask(st.id)}><IconTrash /></button>
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="ca-subtask-input-row">
+                <input className="ca-input" type="text" placeholder="Ej: repasar capítulo 3"
+                  value={nuevoSub}
+                  onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregarSubtask(); } }}
+                />
+                <button className="ca-subtask-add-btn" type="button" onClick={agregarSubtask}>+ Agregar</button>
+              </div>
+              {errorSub && <p className="ca-sub-error">{errorSub}</p>}
+            </div>
+
+            {/* BOTONES */}
+            <div className="ca-botones">
+              <button className="ca-btn-cancelar" onClick={onClose} disabled={loading}>Cancelar</button>
+              <button className="ca-btn-guardar" onClick={manejarEnvio} disabled={loading}>
+                {loading ? <IconSpinner /> : 'Crear actividad'}
+              </button>
+            </div>
+
+          </div>
+        )}
       </div>
-
-      {confirmarEliminar && (
-        <div className="confirm-overlay">
-          <div className="confirm-modal">
-            <h3>Eliminar subtarea</h3>
-            <p>¿Estás seguro que deseas eliminar <strong>{confirmarEliminar.title}</strong>?</p>
-            <p className="confirm-aviso">Esta acción no se puede deshacer.</p>
-            <div className="confirm-botones">
-              <button className="confirm-btn-cancelar" onClick={() => setConfirmarEliminar(null)}>Cancelar</button>
-              <button className="confirm-btn-eliminar" onClick={confirmarYEliminar}>Sí, eliminar</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
 
-export default ActivityDetail;
+export default CreateActivity;
+
+// ============================================================
+// EDITAR ACTIVIDAD — mismo archivo, mismos estilos
+// ============================================================
+export function EditActivity({ actividad, onClose, onActualizado }) {
+  const [titulo, setTitulo]             = useState(actividad.title || '');
+  const [descripcion, setDescripcion]   = useState(actividad.description || '');
+  const [tipo, setTipo]                 = useState(actividad.activity_type || '');
+  const [dificultad, setDificultad]     = useState(actividad.difficulty || '');
+  const [fecha, setFecha]               = useState(actividad.due_date || '');
+  const [horasEstimadas, setHorasEstimadas] = useState(String(actividad.horas_estimadas || ''));
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState('');
+  const [success, setSuccess]           = useState(false);
+
+  const manejarEnvio = async () => {
+    if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
+    if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
+    if (!descripcion.trim())      { setError('Debe ingresar una descripción.'); return; }
+    if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
+    if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
+    if (!fecha)                   { setError('Selecciona una fecha.'); return; }
+
+    setError(''); setLoading(true);
+    const token = localStorage.getItem('token');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          title: titulo,
+          description: descripcion,
+          start_date: fecha,
+          due_date: fecha,
+          activity_type: tipo,
+          difficulty: dificultad,
+          horas_estimadas: horasEstimadas ? parseFloat(horasEstimadas) : 0,
+        }),
+      });
+
+      if (res.ok) {
+        setSuccess(true); setLoading(false);
+        setTimeout(() => { if (onActualizado) onActualizado(); }, 1000);
+      } else {
+        const datos = await res.json();
+        const errData = datos?.data || datos;
+        if (errData?.title) setError('Titulo: ' + errData.title[0]);
+        else if (errData?.due_date) setError('Fecha: ' + errData.due_date[0]);
+        else setError('Datos incorrectos. Verifica el formulario.');
+        setLoading(false);
+      }
+    } catch (err) {
+      setError('Error de conexión con el servidor.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="ca-overlay">
+      <div className="ca-modal">
+        <div className="ca-header">
+          <h2 className="ca-titulo">Editar Actividad</h2>
+          <button className="ca-cerrar" onClick={onClose}>✕</button>
+        </div>
+
+        {success && <div className="ca-mensaje ca-exito">✅ Actividad actualizada. Cerrando...</div>}
+        {error   && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
+
+        {!success && (
+          <div className="ca-form">
+
+            <div className="ca-campo">
+              <label className="ca-label">Título *</label>
+              <input className="ca-input" type="text" placeholder="Ej: Examen Final de Matemáticas"
+                value={titulo} onChange={e => setTitulo(e.target.value)} />
+            </div>
+
+            <div className="ca-campo">
+              <label className="ca-label">Descripción</label>
+              <textarea className="ca-textarea" placeholder="Describe los detalles..."
+                value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
+            </div>
+
+            <div className="ca-fila-2">
+              <div className="ca-campo">
+                <label className="ca-label">Tipo *</label>
+                <div className="ca-select-wrapper">
+                  <select className="ca-select" value={tipo} onChange={e => setTipo(e.target.value)}>
+                    <option value="">Selecciona...</option>
+                    <option value="homework">Tarea</option>
+                    <option value="exam">Examen</option>
+                    <option value="presentation">Presentación</option>
+                    <option value="project">Proyecto</option>
+                  </select>
+                </div>
+              </div>
+              <div className="ca-campo">
+                <label className="ca-label">Prioridad *</label>
+                <div className="ca-select-wrapper">
+                  <select className="ca-select" value={dificultad} onChange={e => setDificultad(e.target.value)}>
+                    <option value="">Selecciona...</option>
+                    <option value="baja">Baja</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                    <option value="critica">Crítica</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="ca-fila-2">
+              <div className="ca-campo">
+                <label className="ca-label">Fecha de actividad *</label>
+                <input className="ca-input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+              </div>
+              <div className="ca-campo">
+                <label className="ca-label">Horas estimadas</label>
+                <input className="ca-input" type="number" min="0" step="1" placeholder="00 h"
+                  value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="ca-botones">
+              <button className="ca-btn-cancelar" onClick={onClose} disabled={loading}>Cancelar</button>
+              <button className="ca-btn-guardar" onClick={manejarEnvio} disabled={loading}>
+                {loading ? <IconSpinner /> : 'Guardar cambios'}
+              </button>
+            </div>
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

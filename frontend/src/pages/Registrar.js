@@ -1,27 +1,31 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './Registrar.css'; // Asegúrate de que el nombre coincida con tu archivo CSS
+import './Registrar.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
 
+const IconSpinner = () => (
+  <svg style={{width:18,height:18,display:'inline-block',verticalAlign:'middle',animation:'spin 0.7s linear infinite'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/>
+    <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
+  </svg>
+);
+
 const Registrar = () => {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername]   = useState('');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
   const [password2, setPassword2] = useState('');
-  
   const [errorMessage, setErrorMessage] = useState('');
-  const [errorFields, setErrorFields] = useState([]);
-  
-  // NUEVO: Estado para saber si el registro fue exitoso
-  const [isSuccess, setIsSuccess] = useState(false); 
-  
+  const [errorFields, setErrorFields]   = useState([]);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [loading, setLoading]     = useState(false);
   const navigate = useNavigate();
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    setErrorMessage('');
-    setErrorFields([]);
+    setErrorMessage(''); setErrorFields([]);
 
     if (!username || !email || !password || !password2) {
       setErrorMessage('Por favor, completa todos los campos');
@@ -40,39 +44,31 @@ const Registrar = () => {
       return;
     }
 
+    setLoading(true);
     try {
       const response = await fetch(`${API_BASE}/api/auth/register/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: username,
-          email: email,
-          password: password,
-          password2: password2
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password, password2 })
       });
-
       const data = await response.json();
 
-      if (response.ok && data.status === "success") {
-        // En lugar de alert(), activamos la pantalla verde
+      if (response.ok && data.status === 'success') {
         setIsSuccess(true);
       } else {
         let errorMsg = 'Error al registrar el usuario';
         if (data.data) {
-           const firstErrorKey = Object.keys(data.data)[0];
-           errorMsg = data.data[firstErrorKey][0]; 
+          const firstKey = Object.keys(data.data)[0];
+          errorMsg = data.data[firstKey][0];
         } else if (data.message) {
-           errorMsg = data.message;
+          errorMsg = data.message;
         }
         setErrorMessage(errorMsg);
       }
     } catch (error) {
-      console.error("Error conectando al backend:", error);
       setErrorMessage('Error de conexión con el servidor');
     }
+    setLoading(false);
   };
 
   return (
@@ -87,81 +83,52 @@ const Registrar = () => {
         <h2>Registrarse</h2>
         <p className="subtitle">Completa el formulario con tus datos</p>
 
-        {/* ALERTA DE ÉXITO (Verde) */}
-        {isSuccess && (
-          <div className="success-alert">
-            El registro fue exitoso
-          </div>
-        )}
-
-        {/* ALERTA DE ERROR (Roja - Se oculta si hay éxito) */}
+        {isSuccess && <div className="success-alert">✅ El registro fue exitoso</div>}
         {!isSuccess && errorMessage && (
-          <div className="error-alert">
-            <span className="error-icon">⚠️</span> {errorMessage}
-          </div>
+          <div className="error-alert"><span className="error-icon">⚠️</span> {errorMessage}</div>
         )}
 
         <form onSubmit={handleRegister}>
           <div className="input-group">
             <label>Nombre de usuario</label>
-            <input 
-              type="text" 
-              placeholder="Ej: juanperez123" 
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+            <input type="text" placeholder="Ej: juanperez123"
+              value={username} onChange={e => setUsername(e.target.value)}
               className={errorFields.includes('username') ? 'input-error' : ''}
-              disabled={isSuccess} /* Deshabilita el input si ya fue exitoso */
+              disabled={isSuccess || loading}
             />
           </div>
-
           <div className="input-group">
             <label>Correo electrónico</label>
-            <input 
-              type="email" 
-              placeholder="juanperez@gmail.com" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+            <input type="email" placeholder="juanperez@gmail.com"
+              value={email} onChange={e => setEmail(e.target.value)}
               className={errorFields.includes('email') ? 'input-error' : ''}
-              disabled={isSuccess}
+              disabled={isSuccess || loading}
             />
           </div>
-
           <div className="input-group">
             <label>Contraseña</label>
-            <input 
-              type="password" 
-              placeholder="••••••" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+            <input type="password" placeholder="••••••"
+              value={password} onChange={e => setPassword(e.target.value)}
               className={errorFields.includes('password') ? 'input-error' : ''}
-              disabled={isSuccess}
+              disabled={isSuccess || loading}
             />
           </div>
-
           <div className="input-group">
             <label>Confirmar contraseña</label>
-            <input 
-              type="password" 
-              placeholder="••••••" 
-              value={password2}
-              onChange={(e) => setPassword2(e.target.value)}
+            <input type="password" placeholder="••••••"
+              value={password2} onChange={e => setPassword2(e.target.value)}
               className={errorFields.includes('password2') ? 'input-error' : ''}
-              disabled={isSuccess}
+              disabled={isSuccess || loading}
             />
           </div>
 
-          {/* CAMBIO DE BOTÓN DINÁMICO */}
           {isSuccess ? (
-            <button 
-              type="button" 
-              className="success-button" 
-              onClick={() => navigate('/login')}
-            >
-              Iniciar Sesión
+            <button type="button" className="success-button" onClick={() => navigate('/login')}>
+              Ir a Iniciar Sesión →
             </button>
           ) : (
-            <button type="submit" className="primary-button">
-              Registrarme
+            <button type="submit" className="primary-button" disabled={loading}>
+              {loading ? <IconSpinner /> : 'Registrarme'}
             </button>
           )}
         </form>
