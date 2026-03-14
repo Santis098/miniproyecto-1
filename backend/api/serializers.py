@@ -93,10 +93,11 @@ class SubtaskSerializer(serializers.ModelSerializer):
 
 class ActivitySerializer(serializers.ModelSerializer):
     subtasks = SubtaskSerializer(many=True, required=False, write_only=True)
-    asignatura = serializers.PrimaryKeyRelatedField(
-        queryset=Asignatura.objects.all(),
+    asignatura_nombre = serializers.CharField(
         required=False,
-        allow_null=True
+        allow_null=True,
+        allow_blank=True,
+        write_only=True
     )
 
     title = serializers.CharField(required=True)
@@ -129,6 +130,16 @@ class ActivitySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         subtasks_data = validated_data.pop('subtasks', [])
+        asignatura_nombre = validated_data.pop('asignatura_nombre', None)
+
+        # Si viene nombre de asignatura, buscarla o crearla
+        if asignatura_nombre:
+            asignatura_obj, _ = Asignatura.objects.get_or_create(
+                nombre=asignatura_nombre,
+                defaults={'codigo': asignatura_nombre[:20], 'creditos': 0}
+            )
+            validated_data['asignatura'] = asignatura_obj
+
         activity = Activity.objects.create(**validated_data)
         for subtask_data in subtasks_data:
             Subtask.objects.create(activity=activity, **subtask_data)
