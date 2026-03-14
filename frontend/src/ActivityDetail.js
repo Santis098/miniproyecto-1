@@ -4,25 +4,40 @@ import "./ActivityDetail.css";
 const API_BASE = process.env.REACT_APP_API_URL || "https://miniproyecto-1-x936.onrender.com";
 
 function ActivityDetail({ actividad, onClose, onActualizado }) {
-  const [subtasks, setSubtasks]                   = useState([]);
-  const [loading, setLoading]                     = useState(true);
-  const [mostrarInput, setMostrarInput]           = useState(false);
-  const [nuevoTitulo, setNuevoTitulo]             = useState("");
-  const [errorNuevo, setErrorNuevo]               = useState("");
-  const [editandoId, setEditandoId]               = useState(null);
-  const [editandoTitulo, setEditandoTitulo]       = useState("");
-  const [errorEdicion, setErrorEdicion]           = useState("");
-  const [confirmarEliminar, setConfirmarEliminar] = useState(null);
-  const [horasTrabajadas, setHorasTrabajadas]     = useState(actividad?.horas_trabajadas || 0);
-  const [editandoHoras, setEditandoHoras]         = useState(false);
-  const [horasInput, setHorasInput]               = useState(String(actividad?.horas_trabajadas || 0));
-
   const token = localStorage.getItem("token");
 
+  // Todos los hooks primero, sin excepcion
+  const [subtasks, setSubtasks]               = useState([]);
+  const [loading, setLoading]                 = useState(true);
+  const [mostrarInput, setMostrarInput]       = useState(false);
+  const [nuevoTitulo, setNuevoTitulo]         = useState("");
+  const [errorNuevo, setErrorNuevo]           = useState("");
+  const [editandoId, setEditandoId]           = useState(null);
+  const [editandoTitulo, setEditandoTitulo]   = useState("");
+  const [errorEdicion, setErrorEdicion]       = useState("");
+  const [confirmarEliminar, setConfirmarEliminar] = useState(null);
+  const [horasTrabajadas, setHorasTrabajadas] = useState(0);
+  const [editandoHoras, setEditandoHoras]     = useState(false);
+  const [horasInput, setHorasInput]           = useState("0");
   const [loadingToggle, setLoadingToggle]     = useState(null);
   const [loadingEliminar, setLoadingEliminar] = useState(null);
   const [loadingGuardar, setLoadingGuardar]   = useState(false);
   const [loadingEditar, setLoadingEditar]     = useState(null);
+
+  // Sincronizar horas cuando cambia la actividad
+  useEffect(() => {
+    if (actividad) {
+      setHorasTrabajadas(actividad.horas_trabajadas || 0);
+      setHorasInput(String(actividad.horas_trabajadas || 0));
+    }
+  }, [actividad]);
+
+  useEffect(() => {
+    if (actividad) cargarSubtasks();
+  }, [actividad]);
+
+  // Guard — despues de todos los hooks
+  if (!actividad) return null;
 
   const formatFecha = (f) => {
     if (!f) return "—";
@@ -31,7 +46,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   };
 
   const cargarSubtasks = () => {
-    if (!actividad) return;
     setLoading(true);
     fetch(`${API_BASE}/api/subtasks/`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -43,28 +57,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
         setLoading(false);
       })
       .catch(err => { console.error(err); setLoading(false); });
-  };
-
-  useEffect(() => { cargarSubtasks(); }, [actividad]);
-
-  if (!actividad) return null;
-
-  // ===== GUARDAR HORAS TRABAJADAS =====
-  const guardarHoras = async () => {
-    const val = parseFloat(horasInput);
-    if (isNaN(val) || val < 0) return;
-    setLoadingGuardar(true);
-    try {
-      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ horas_trabajadas: val })
-      });
-      setHorasTrabajadas(val);
-      setEditandoHoras(false);
-      if (onActualizado) onActualizado();
-    } catch (err) { console.error(err); }
-    setLoadingGuardar(false);
   };
 
   const getTipoBadge = (type) => {
@@ -82,14 +74,15 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     return map[d?.toLowerCase()] || "badge-media";
   };
 
+  const horas_estimadas = actividad.horas_estimadas || 0;
+
   const getProgreso = () => {
     const progrSubs = subtasks.length > 0
       ? Math.round((subtasks.filter(s => s.is_completed).length / subtasks.length) * 100)
       : 0;
-    const progrHoras = actividad.horas_estimadas > 0
-      ? Math.min(100, Math.round((horasTrabajadas / actividad.horas_estimadas) * 100))
+    const progrHoras = horas_estimadas > 0
+      ? Math.min(100, Math.round((horasTrabajadas / horas_estimadas) * 100))
       : 0;
-    // Si hay horas trabajadas, combina ambos. Si no, usa solo subtareas.
     if (horasTrabajadas > 0 && subtasks.length > 0) return Math.round((progrHoras + progrSubs) / 2);
     if (horasTrabajadas > 0) return progrHoras;
     if (subtasks.length > 0) return progrSubs;
@@ -97,7 +90,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   };
 
   const getProgresoSubtareas = () => {
-    if (subtasks.length === 0) return { completadas: 0, total: 0 };
     const completadas = subtasks.filter(s => s.is_completed).length;
     return { completadas, total: subtasks.length };
   };
@@ -105,7 +97,23 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const progreso = getProgreso();
   const progrSub = getProgresoSubtareas();
 
-  // ===== SUBTAREAS =====
+  const guardarHoras = async () => {
+    const val = parseFloat(horasInput);
+    if (isNaN(val) || val < 0) return;
+    setLoadingGuardar(true);
+    try {
+      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ horas_trabajadas: val })
+      });
+      setHorasTrabajadas(val);
+      setEditandoHoras(false);
+      if (onActualizado) onActualizado();
+    } catch (err) { console.error(err); }
+    setLoadingGuardar(false);
+  };
+
   const crearSubtask = async () => {
     if (!nuevoTitulo.trim()) { setErrorNuevo("Debe ingresar un titulo."); return; }
     if (nuevoTitulo.trim().length < 3) { setErrorNuevo("Mínimo 3 caracteres."); return; }
@@ -116,12 +124,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ title: nuevoTitulo, activity: actividad.id })
       });
-      if (res.status === 201) {
-        setNuevoTitulo(""); setMostrarInput(false); cargarSubtasks();
-      } else {
-        const err = await res.json();
-        setErrorNuevo(err?.data?.title?.[0] || "Error al crear la subtarea.");
-      }
+      if (res.status === 201) { setNuevoTitulo(""); setMostrarInput(false); cargarSubtasks(); }
+      else { const e = await res.json(); setErrorNuevo(e?.data?.title?.[0] || "Error al crear."); }
     } catch (err) { console.error(err); }
   };
 
@@ -173,7 +177,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       <div className="detail-overlay" onClick={onClose}>
         <div className="detail-modal" onClick={e => e.stopPropagation()}>
 
-          {/* HEADER */}
           <div className="detail-header">
             <div className="detail-header-text">
               <h2 className="detail-title">{actividad.title}</h2>
@@ -182,7 +185,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             <button className="detail-close-btn" onClick={onClose}>✕</button>
           </div>
 
-          {/* BADGES */}
           <div className="detail-badges">
             <span className="badge badge-tipo">{getTipoBadge(actividad.activity_type)}</span>
             <span className="badge badge-estado">En Progreso</span>
@@ -191,7 +193,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             </span>
           </div>
 
-          {/* GRID INFO */}
           <div className="detail-info-grid">
             <div className="detail-info-item">
               <span className="detail-info-label">Entrega:</span>
@@ -205,7 +206,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             )}
             <div className="detail-info-item">
               <span className="detail-info-label">Horas:</span>
-              <span className="detail-info-value">{horasTrabajadas}h / {actividad.horas_estimadas || 0}h</span>
+              <span className="detail-info-value">{horasTrabajadas}h / {horas_estimadas}h</span>
             </div>
             {actividad.difficulty && (
               <div className="detail-info-item">
@@ -215,7 +216,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             )}
           </div>
 
-          {/* BARRA PROGRESO */}
           <div className="detail-progreso-section">
             <div className="detail-progreso-header">
               <span>Progreso General</span>
@@ -226,7 +226,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             </div>
           </div>
 
-          {/* TIEMPO — editable */}
           <div className="detail-tiempo-grid">
             <div className="detail-tiempo-item">
               <span className="detail-tiempo-icon">🕐</span>
@@ -234,23 +233,21 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                 <div className="detail-tiempo-label">Tiempo Invertido</div>
                 {editandoHoras ? (
                   <div className="horas-edit-row">
-                    <input
-                      className="horas-input"
-                      type="number" min="0" step="0.5"
+                    <input className="horas-input" type="number" min="0" step="0.5"
                       value={horasInput}
                       onChange={e => setHorasInput(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") guardarHoras(); if (e.key === "Escape") setEditandoHoras(false); }}
-                      autoFocus
-                    />
+                      autoFocus />
                     <button className="horas-btn-ok" onClick={guardarHoras} disabled={loadingGuardar}>
-                      {loadingGuardar ? '...' : '✓'}
+                      {loadingGuardar ? "..." : "✓"}
                     </button>
                     <button className="horas-btn-cancel" onClick={() => setEditandoHoras(false)}>✕</button>
                   </div>
                 ) : (
                   <div className="detail-tiempo-valor-row">
                     <span className="detail-tiempo-valor">{horasTrabajadas}h</span>
-                    <button className="horas-editar-btn" onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }} title="Editar horas">✏️</button>
+                    <button className="horas-editar-btn"
+                      onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }}>✏️</button>
                   </div>
                 )}
               </div>
@@ -258,12 +255,11 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             <div className="detail-tiempo-item">
               <div>
                 <div className="detail-tiempo-label">Tiempo Estimado</div>
-                <div className="detail-tiempo-valor">{actividad.horas_estimadas || 0}h</div>
+                <div className="detail-tiempo-valor">{horas_estimadas}h</div>
               </div>
             </div>
           </div>
 
-          {/* SUBTAREAS */}
           <div className="detail-subtareas-header">
             <span className="detail-subtareas-titulo">Tareas ({progrSub.completadas}/{progrSub.total})</span>
             {!mostrarInput && (
@@ -293,7 +289,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                           onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
                           autoFocus />
                         <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)} disabled={loadingEditar === st.id}>
-                          {loadingEditar === st.id ? '...' : 'Guardar'}
+                          {loadingEditar === st.id ? "..." : "Guardar"}
                         </button>
                         <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
                       </div>
@@ -339,7 +335,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             <div className="confirm-botones">
               <button className="confirm-btn-cancelar" onClick={() => setConfirmarEliminar(null)}>Cancelar</button>
               <button className="confirm-btn-eliminar" onClick={confirmarYEliminar} disabled={!!loadingEliminar}>
-                {loadingEliminar ? 'Eliminando...' : 'Sí, eliminar'}
+                {loadingEliminar ? "Eliminando..." : "Sí, eliminar"}
               </button>
             </div>
           </div>

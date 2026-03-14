@@ -285,7 +285,7 @@ const Dashboard = () => {
         <ActivityDetail
           actividad={actividadDetalle}
           onClose={() => setActividadDetalle(null)}
-          onActualizado={cargarTareas}
+          onActualizado={() => cargarTareas()}
         />
       )}
 
