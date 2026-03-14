@@ -138,11 +138,20 @@ class ActivitySerializer(serializers.ModelSerializer):
         subtasks_data = validated_data.pop('subtasks', [])
         asignatura_nombre = validated_data.pop('asignatura_nombre', None)
 
-        # Si viene nombre de asignatura, buscarla por nombre
-        if asignatura_nombre:
-            asignatura_obj = Asignatura.objects.filter(nombre__iexact=asignatura_nombre).first()
-            if asignatura_obj:
-                validated_data['asignatura'] = asignatura_obj
+        # Si viene nombre de asignatura, buscarla o crearla automaticamente
+        if asignatura_nombre and asignatura_nombre.strip():
+            asignatura_obj = Asignatura.objects.filter(nombre__iexact=asignatura_nombre.strip()).first()
+            if not asignatura_obj:
+                # Generar codigo unico basado en el nombre
+                import re, uuid
+                codigo_base = re.sub(r'[^a-zA-Z0-9]', '', asignatura_nombre).upper()[:10]
+                codigo = f"{codigo_base}_{str(uuid.uuid4())[:4].upper()}"
+                asignatura_obj = Asignatura.objects.create(
+                    nombre=asignatura_nombre.strip(),
+                    codigo=codigo,
+                    creditos=0
+                )
+            validated_data['asignatura'] = asignatura_obj
 
         activity = Activity.objects.create(**validated_data)
         for subtask_data in subtasks_data:
