@@ -19,6 +19,11 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
 
   const token = localStorage.getItem("token");
 
+  const [loadingToggle, setLoadingToggle]   = useState(null);
+  const [loadingEliminar, setLoadingEliminar] = useState(null);
+  const [loadingGuardar, setLoadingGuardar] = useState(false);
+  const [loadingEditar, setLoadingEditar]   = useState(null);
+
   // Formatear fecha de YYYY-MM-DD a DD/MM/YYYY
   const formatFecha = (f) => {
     if (!f) return "—";
@@ -47,6 +52,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const guardarHoras = async () => {
     const val = parseFloat(horasInput);
     if (isNaN(val) || val < 0) return;
+    setLoadingGuardar(true);
     try {
       await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
         method: "PATCH",
@@ -57,6 +63,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       setEditandoHoras(false);
       if (onActualizado) onActualizado();
     } catch (err) { console.error(err); }
+    setLoadingGuardar(false);
   };
 
   const getTipoBadge = (type) => {
@@ -118,6 +125,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   };
 
   const toggleSubtask = async (st) => {
+    setLoadingToggle(st.id);
     try {
       await fetch(`${API_BASE}/api/subtasks/${st.id}/`, {
         method: "PATCH",
@@ -126,16 +134,19 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       });
       cargarSubtasks();
     } catch (err) { console.error(err); }
+    setLoadingToggle(null);
   };
 
   const confirmarYEliminar = async () => {
     if (!confirmarEliminar) return;
+    setLoadingEliminar(confirmarEliminar.id);
     try {
       await fetch(`${API_BASE}/api/subtasks/${confirmarEliminar.id}/`, {
         method: "DELETE", headers: { Authorization: `Bearer ${token}` }
       });
       setConfirmarEliminar(null); cargarSubtasks();
     } catch (err) { console.error(err); }
+    setLoadingEliminar(null);
   };
 
   const iniciarEdicion = (st) => { setEditandoId(st.id); setEditandoTitulo(st.title); setErrorEdicion(""); };
@@ -144,7 +155,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const guardarEdicion = async (id) => {
     if (!editandoTitulo.trim()) { setErrorEdicion("Debe ingresar un titulo."); return; }
     if (editandoTitulo.trim().length < 3) { setErrorEdicion("Mínimo 3 caracteres."); return; }
-    setErrorEdicion("");
+    setErrorEdicion(""); setLoadingEditar(id);
     try {
       await fetch(`${API_BASE}/api/subtasks/${id}/`, {
         method: "PATCH",
@@ -153,6 +164,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       });
       setEditandoId(null); setEditandoTitulo(""); cargarSubtasks();
     } catch (err) { console.error(err); }
+    setLoadingEditar(null);
   };
 
   return (
@@ -229,7 +241,9 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                       onKeyDown={e => { if (e.key === "Enter") guardarHoras(); if (e.key === "Escape") setEditandoHoras(false); }}
                       autoFocus
                     />
-                    <button className="horas-btn-ok" onClick={guardarHoras}>✓</button>
+                    <button className="horas-btn-ok" onClick={guardarHoras} disabled={loadingGuardar}>
+                      {loadingGuardar ? '...' : '✓'}
+                    </button>
                     <button className="horas-btn-cancel" onClick={() => setEditandoHoras(false)}>✕</button>
                   </div>
                 ) : (
@@ -264,7 +278,12 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             <ul className="detail-list">
               {subtasks.map(st => (
                 <li key={st.id} className={`detail-item ${st.is_completed ? "done" : ""}`}>
-                  <input type="checkbox" className="detail-checkbox" checked={st.is_completed} onChange={() => toggleSubtask(st)} />
+                  <input type="checkbox" className="detail-checkbox"
+                    checked={st.is_completed}
+                    onChange={() => toggleSubtask(st)}
+                    disabled={loadingToggle === st.id}
+                    style={{opacity: loadingToggle === st.id ? 0.4 : 1}}
+                  />
                   {editandoId === st.id ? (
                     <div className="edit-col">
                       <div className="edit-row">
@@ -272,7 +291,9 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                           onChange={e => { setEditandoTitulo(e.target.value); setErrorEdicion(""); }}
                           onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
                           autoFocus />
-                        <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)}>Guardar</button>
+                        <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)} disabled={loadingEditar === st.id}>
+                          {loadingEditar === st.id ? '...' : 'Guardar'}
+                        </button>
                         <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
                       </div>
                       {errorEdicion && <p className="st-error-msg">{errorEdicion}</p>}
@@ -316,7 +337,9 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             <p className="confirm-aviso">Esta acción no se puede deshacer.</p>
             <div className="confirm-botones">
               <button className="confirm-btn-cancelar" onClick={() => setConfirmarEliminar(null)}>Cancelar</button>
-              <button className="confirm-btn-eliminar" onClick={confirmarYEliminar}>Sí, eliminar</button>
+              <button className="confirm-btn-eliminar" onClick={confirmarYEliminar} disabled={!!loadingEliminar}>
+                {loadingEliminar ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
             </div>
           </div>
         </div>

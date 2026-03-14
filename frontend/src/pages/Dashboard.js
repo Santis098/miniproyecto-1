@@ -1,23 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
 import CreateActivity from '../CreateActivity';
 import ActivityDetail from '../ActivityDetail';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
+const FILTROS = ['Progreso', 'Dificultad', 'Horas estimadas', 'Asignatura', 'Fecha'];
+const FILTRO_PARAM = { 'Progreso': 'progreso', 'Dificultad': 'dificultad', 'Horas estimadas': 'horas_estimadas', 'Asignatura': 'asignatura', 'Fecha': 'fecha' };
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [userName, setUserName]             = useState('');
-  const [tareasData, setTareasData]         = useState(null);
-  const [loading, setLoading]               = useState(true);
-  const [mostrarCrear, setMostrarCrear]     = useState(false);
+  const [userName, setUserName]               = useState('');
+  const [tareasData, setTareasData]           = useState(null);
+  const [loading, setLoading]                 = useState(true);
+  const [loadingSeccion, setLoadingSeccion]   = useState({ hoy: false, proximas: false });
+  const [mostrarCrear, setMostrarCrear]       = useState(false);
   const [actividadDetalle, setActividadDetalle] = useState(null);
+  const [filtroHoy, setFiltroHoy]             = useState('Progreso');
+  const [filtroProximas, setFiltroProximas]   = useState('Fecha');
+  const [dropdownHoy, setDropdownHoy]         = useState(false);
+  const [dropdownProximas, setDropdownProximas] = useState(false);
+  const refHoy      = useRef(null);
+  const refProximas = useRef(null);
 
   const currentDate = new Date().toLocaleDateString('es-ES', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
-
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -26,24 +34,47 @@ const Dashboard = () => {
     cargarTareas();
   }, []);
 
-  const cargarTareas = async () => {
+  // Cerrar dropdowns al clickear fuera
+  useEffect(() => {
+    const handler = (e) => {
+      if (refHoy.current && !refHoy.current.contains(e.target)) setDropdownHoy(false);
+      if (refProximas.current && !refProximas.current.contains(e.target)) setDropdownProximas(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const cargarTareas = async (filtrarHoy = filtroHoy, filtrarProximas = filtroProximas) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/hoy/`, {
+      const param = FILTRO_PARAM[filtrarHoy] || 'progreso';
+      const res = await fetch(`${API_BASE}/api/tasks/hoy/?filtrar_por=${param}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
-      // El backend devuelve { status, message, data: { vencidas, hoy, proximas, contadores } }
       if (json.status === 'success' && json.data) {
         setTareasData(json.data);
       } else {
         setTareasData({ vencidas: [], hoy: [], proximas: [], contadores: { hoy: 0, esta_semana: 0, atrasadas: 0 } });
       }
     } catch (err) {
-      console.error('Error cargando tareas:', err);
       setTareasData({ vencidas: [], hoy: [], proximas: [], contadores: { hoy: 0, esta_semana: 0, atrasadas: 0 } });
     }
     setLoading(false);
+  };
+
+  const cambiarFiltroHoy = async (f) => {
+    setFiltroHoy(f); setDropdownHoy(false);
+    setLoadingSeccion(s => ({ ...s, hoy: true }));
+    await cargarTareas(f, filtroProximas);
+    setLoadingSeccion(s => ({ ...s, hoy: false }));
+  };
+
+  const cambiarFiltroProximas = async (f) => {
+    setFiltroProximas(f); setDropdownProximas(false);
+    setLoadingSeccion(s => ({ ...s, proximas: true }));
+    await cargarTareas(filtroHoy, f);
+    setLoadingSeccion(s => ({ ...s, proximas: false }));
   };
 
   const handleLogout = () => {
@@ -62,7 +93,12 @@ const Dashboard = () => {
     return map[d?.toLowerCase()] || 'badge-media';
   };
 
-  // Tarjeta de actividad clickeable
+  const formatFecha = (f) => {
+    if (!f) return '';
+    const [y, m, d] = f.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
   const ActividadCard = ({ actividad, idx }) => (
     <div className="actividad-fila" onClick={() => setActividadDetalle(actividad)}>
       <div className="actividad-fila-izq">
@@ -70,7 +106,7 @@ const Dashboard = () => {
         <div>
           <div className="actividad-fila-titulo">{actividad.title}</div>
           <div className="actividad-fila-fecha">
-            Entrega: {actividad.due_date}
+            Entrega: {formatFecha(actividad.due_date)}
             {actividad.activity_type && (
               <span className={`badge ${getDifClass(actividad.difficulty)}`} style={{marginLeft:8, fontSize:11}}>
                 {getTipoBadge(actividad.activity_type)}
@@ -86,12 +122,33 @@ const Dashboard = () => {
     </div>
   );
 
+  // Dropdown de filtro reutilizable
+  const FiltroDropdown = ({ filtro, dropdown, setDropdown, onChange, refEl, sinFecha }) => (
+    <div className="filtro-wrapper" ref={refEl}>
+      <button className="filtro-btn" onClick={() => setDropdown(d => !d)}>
+        Filtrar por <span className="filtro-chevron">▾</span>
+      </button>
+      {dropdown && (
+        <div className="filtro-menu">
+          {FILTROS.filter(f => sinFecha ? f !== 'Fecha' : true).map(f => (
+            <div
+              key={f}
+              className={`filtro-item ${filtro === f ? 'filtro-activo' : ''}`}
+              onClick={() => onChange(f)}
+            >
+              {filtro === f && <span className="filtro-check">✓</span>} {f}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   const contadores = tareasData?.contadores || { hoy: 0, esta_semana: 0, atrasadas: 0 };
 
   return (
     <div className="dashboard-container">
 
-      {/* BARRA SUPERIOR */}
       <header className="dashboard-topbar">
         <div className="brand">
           <span role="img" aria-label="calendar">📅</span> Gestión de Actividades
@@ -104,12 +161,10 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* BANNER */}
       <div className="info-banner">
         <span>ℹ️</span> Priorizamos tu día: primero lo vencido, luego lo urgente de hoy, y finalmente lo próximo.
       </div>
 
-      {/* TABS */}
       <nav className="dashboard-nav">
         <div className="nav-tab active"><span>⊞</span> Hoy</div>
         <div className="nav-tab"><span>📋</span> Actividades</div>
@@ -117,15 +172,12 @@ const Dashboard = () => {
         <div className="nav-tab"><span>📈</span> Avance</div>
       </nav>
 
-      {/* CONTENIDO */}
       <main className="dashboard-content">
-
         <div className="page-title">
           <h1>Panel de Hoy</h1>
           <p>{currentDate}</p>
         </div>
 
-        {/* STATS */}
         <div className="stats-grid">
           <div className="stat-card">
             <h3>Hoy</h3>
@@ -145,7 +197,10 @@ const Dashboard = () => {
         </div>
 
         {loading ? (
-          <div className="empty-state"><p>Cargando actividades...</p></div>
+          <div className="loading-state">
+            <div className="loading-spinner" />
+            <p>Cargando actividades...</p>
+          </div>
         ) : (
           <>
             {/* ATRASADAS */}
@@ -166,11 +221,20 @@ const Dashboard = () => {
 
             {/* HOY */}
             <div className="section-card">
-              <div className="section-header" style={{justifyContent:'space-between'}}>
+              <div className="section-header section-header-actions">
                 <span><span>🕒</span> Prioridades para Hoy</span>
-                <button className="create-btn" onClick={() => setMostrarCrear(true)}>+ Agregar actividad</button>
+                <div className="section-acciones">
+                  <FiltroDropdown
+                    filtro={filtroHoy} dropdown={dropdownHoy}
+                    setDropdown={setDropdownHoy} onChange={cambiarFiltroHoy}
+                    refEl={refHoy} sinFecha={true}
+                  />
+                  <button className="create-btn" onClick={() => setMostrarCrear(true)}>+ Agregar actividad</button>
+                </div>
               </div>
-              {!tareasData?.hoy?.length ? (
+              {loadingSeccion.hoy ? (
+                <div className="loading-state mini"><div className="loading-spinner small" /><p>Aplicando filtro...</p></div>
+              ) : !tareasData?.hoy?.length ? (
                 <div className="empty-state">
                   <div className="success-icon">✅</div>
                   <p>No tienes actividades programadas para hoy</p>
@@ -183,11 +247,20 @@ const Dashboard = () => {
 
             {/* PRÓXIMAS */}
             <div className="section-card">
-              <div className="section-header" style={{justifyContent:'space-between'}}>
+              <div className="section-header section-header-actions">
                 <span><span>📅</span> Próximas Actividades</span>
-                <button className="create-btn" onClick={() => setMostrarCrear(true)}>+ Agregar actividad</button>
+                <div className="section-acciones">
+                  <FiltroDropdown
+                    filtro={filtroProximas} dropdown={dropdownProximas}
+                    setDropdown={setDropdownProximas} onChange={cambiarFiltroProximas}
+                    refEl={refProximas}
+                  />
+                  <button className="create-btn" onClick={() => setMostrarCrear(true)}>+ Agregar actividad</button>
+                </div>
               </div>
-              {!tareasData?.proximas?.length ? (
+              {loadingSeccion.proximas ? (
+                <div className="loading-state mini"><div className="loading-spinner small" /><p>Aplicando filtro...</p></div>
+              ) : !tareasData?.proximas?.length ? (
                 <div className="empty-state">
                   <div className="success-icon">✅</div>
                   <p>No tienes próximas actividades</p>
@@ -199,10 +272,8 @@ const Dashboard = () => {
             </div>
           </>
         )}
-
       </main>
 
-      {/* MODAL CREAR */}
       {mostrarCrear && (
         <CreateActivity
           onClose={() => setMostrarCrear(false)}
@@ -210,11 +281,11 @@ const Dashboard = () => {
         />
       )}
 
-      {/* MODAL DETALLE */}
       {actividadDetalle && (
         <ActivityDetail
           actividad={actividadDetalle}
           onClose={() => setActividadDetalle(null)}
+          onActualizado={cargarTareas}
         />
       )}
 
