@@ -132,13 +132,11 @@ class ActivitySerializer(serializers.ModelSerializer):
         subtasks_data = validated_data.pop('subtasks', [])
         asignatura_nombre = validated_data.pop('asignatura_nombre', None)
 
-        # Si viene nombre de asignatura, buscarla o crearla
+        # Si viene nombre de asignatura, buscarla por nombre
         if asignatura_nombre:
-            asignatura_obj, _ = Asignatura.objects.get_or_create(
-                nombre=asignatura_nombre,
-                defaults={'codigo': asignatura_nombre[:20], 'creditos': 0}
-            )
-            validated_data['asignatura'] = asignatura_obj
+            asignatura_obj = Asignatura.objects.filter(nombre__iexact=asignatura_nombre).first()
+            if asignatura_obj:
+                validated_data['asignatura'] = asignatura_obj
 
         activity = Activity.objects.create(**validated_data)
         for subtask_data in subtasks_data:
