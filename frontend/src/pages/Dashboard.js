@@ -25,8 +25,8 @@ const IconSpinner = () => (
     <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
   </svg>
 );
-const FILTROS = ['Progreso', 'Dificultad', 'Horas estimadas', 'Asignatura', 'Fecha'];
-const FILTRO_PARAM = { 'Progreso': 'progreso', 'Dificultad': 'dificultad', 'Horas estimadas': 'horas_estimadas', 'Asignatura': 'asignatura', 'Fecha': 'fecha' };
+const FILTROS = ['Dificultad', 'Horas estimadas', 'Fecha'];
+const FILTROS_SIN_FECHA = ['Dificultad', 'Horas estimadas'];
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -40,7 +40,7 @@ const Dashboard = () => {
   const [eliminando, setEliminando]               = useState(false);
   const [exitoMsg, setExitoMsg]                   = useState('');
   const [editandoActividad, setEditandoActividad] = useState(null);
-  const [filtroHoy, setFiltroHoy]             = useState('Progreso');
+  const [filtroHoy, setFiltroHoy]             = useState('Dificultad');
   const [filtroProximas, setFiltroProximas]   = useState('Fecha');
   const [dropdownHoy, setDropdownHoy]         = useState(false);
   const [dropdownProximas, setDropdownProximas] = useState(false);
@@ -68,11 +68,29 @@ const Dashboard = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const cargarTareas = async (filtrarHoy = filtroHoy, filtrarProximas = filtroProximas) => {
+  const DIFICULTAD_ORDEN = { critica: 0, alta: 1, media: 2, baja: 3 };
+
+  const ordenarLista = (lista, filtro) => {
+    if (!lista) return [];
+    const copia = [...lista];
+    if (filtro === 'Dificultad') {
+      return copia.sort((a, b) =>
+        (DIFICULTAD_ORDEN[a.difficulty] ?? 99) - (DIFICULTAD_ORDEN[b.difficulty] ?? 99)
+      );
+    }
+    if (filtro === 'Horas estimadas') {
+      return copia.sort((a, b) => (b.horas_estimadas || 0) - (a.horas_estimadas || 0));
+    }
+    if (filtro === 'Fecha') {
+      return copia.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+    }
+    return copia;
+  };
+
+  const cargarTareas = async () => {
     setLoading(true);
     try {
-      const param = FILTRO_PARAM[filtrarHoy] || 'progreso';
-      const res = await fetch(`${API_BASE}/api/tasks/hoy/?filtrar_por=${param}`, {
+      const res = await fetch(`${API_BASE}/api/tasks/hoy/`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
@@ -87,18 +105,12 @@ const Dashboard = () => {
     setLoading(false);
   };
 
-  const cambiarFiltroHoy = async (f) => {
+  const cambiarFiltroHoy = (f) => {
     setFiltroHoy(f); setDropdownHoy(false);
-    setLoadingSeccion(s => ({ ...s, hoy: true }));
-    await cargarTareas(f, filtroProximas);
-    setLoadingSeccion(s => ({ ...s, hoy: false }));
   };
 
-  const cambiarFiltroProximas = async (f) => {
+  const cambiarFiltroProximas = (f) => {
     setFiltroProximas(f); setDropdownProximas(false);
-    setLoadingSeccion(s => ({ ...s, proximas: true }));
-    await cargarTareas(filtroHoy, f);
-    setLoadingSeccion(s => ({ ...s, proximas: false }));
   };
 
   const eliminarActividad = async (actividad) => {
@@ -144,11 +156,16 @@ const Dashboard = () => {
         <div className="activity-number">{idx + 1}</div>
         <div>
           <div className="actividad-fila-titulo">{actividad.title}</div>
-          <div className="actividad-fila-fecha">
+          <div className="actividad-fila-fecha" style={{display:'flex', alignItems:'center', flexWrap:'wrap', gap:6}}>
             Entrega: {formatFecha(actividad.due_date)}
             {actividad.activity_type && (
-              <span className={`badge ${getDifClass(actividad.difficulty)}`} style={{marginLeft:8, fontSize:11}}>
+              <span className={`badge ${getDifClass(actividad.difficulty)}`} style={{fontSize:11}}>
                 {getTipoBadge(actividad.activity_type)}
+              </span>
+            )}
+            {actividad.difficulty && (
+              <span className={`badge ${getDifClass(actividad.difficulty)}`} style={{fontSize:11}}>
+                {actividad.difficulty.charAt(0).toUpperCase() + actividad.difficulty.slice(1)}
               </span>
             )}
           </div>
@@ -170,7 +187,7 @@ const Dashboard = () => {
       </button>
       {dropdown && (
         <div className="filtro-menu">
-          {FILTROS.filter(f => sinFecha ? f !== 'Fecha' : true).map(f => (
+          {(sinFecha ? FILTROS_SIN_FECHA : FILTROS).map(f => (
             <div
               key={f}
               className={`filtro-item ${filtro === f ? 'filtro-activo' : ''}`}
@@ -281,7 +298,7 @@ const Dashboard = () => {
                   <button className="create-btn" onClick={() => setMostrarCrear(true)}>Crear nueva actividad</button>
                 </div>
               ) : (
-                tareasData.hoy.map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
+                ordenarLista(tareasData.hoy, filtroHoy).map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
               )}
             </div>
 
@@ -307,7 +324,7 @@ const Dashboard = () => {
                   <button className="create-btn" onClick={() => setMostrarCrear(true)}>Crear nueva actividad</button>
                 </div>
               ) : (
-                tareasData.proximas.map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
+                ordenarLista(tareasData.proximas, filtroProximas).map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
               )}
             </div>
           </>
