@@ -87,6 +87,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
     if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
     if (!fecha)                   { setError('Selecciona una fecha de actividad.'); return; }
     if (subtasks.length === 0)    { setError('Agrega al menos una subtarea.'); return; }
+    if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
 
     setError(''); setLoading(true);
     const token = localStorage.getItem('token');
@@ -302,6 +303,7 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
     if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
     if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
     if (!fecha)                   { setError('Selecciona una fecha.'); return; }
+    if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
 
     setError(''); setLoading(true);
     const token = localStorage.getItem('token');

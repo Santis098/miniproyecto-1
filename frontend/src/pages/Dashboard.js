@@ -25,8 +25,8 @@ const IconSpinner = () => (
     <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
   </svg>
 );
-const FILTROS = ['Dificultad', 'Horas estimadas', 'Fecha', 'Progreso', 'Asignatura'];
-const FILTROS_SIN_FECHA = ['Dificultad', 'Horas estimadas', 'Progreso', 'Asignatura'];
+const FILTROS = ['Dificultad', 'Horas estimadas', 'Fecha', 'Progreso'];
+const FILTROS_SIN_FECHA = ['Dificultad', 'Horas estimadas', 'Progreso'];
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -40,6 +40,8 @@ const Dashboard = () => {
   const [eliminando, setEliminando]               = useState(false);
   const [exitoMsg, setExitoMsg]                   = useState('');
   const [editandoActividad, setEditandoActividad] = useState(null);
+  const [asignaturasDisponibles, setAsignaturasDisponibles] = useState([]);
+
   const [filtroHoy, setFiltroHoy]             = useState('Progreso');
   const [filtroProximas, setFiltroProximas]   = useState('Fecha');
   const [dropdownHoy, setDropdownHoy]         = useState(false);
@@ -56,6 +58,7 @@ const Dashboard = () => {
     const nombre = localStorage.getItem('username');
     setUserName(nombre || 'Usuario');
     cargarTareas();
+    cargarAsignaturas();
   }, []);
 
   // Cerrar dropdowns al clickear fuera
@@ -63,44 +66,52 @@ const Dashboard = () => {
     const handler = (e) => {
       if (refHoy.current && !refHoy.current.contains(e.target)) setDropdownHoy(false);
       if (refProximas.current && !refProximas.current.contains(e.target)) setDropdownProximas(false);
+      if (refAsigHoy.current && !refAsigHoy.current.contains(e.target)) setDropdownAsigHoy(false);
+      if (refAsigProximas.current && !refAsigProximas.current.contains(e.target)) setDropdownAsigProximas(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const cargarAsignaturas = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/asignaturas/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      const lista = Array.isArray(json?.data) ? json.data : [];
+      setAsignaturasDisponibles(lista);
+    } catch (err) { console.error(err); }
+  };
+
   const DIFICULTAD_ORDEN = { critica: 0, alta: 1, media: 2, baja: 3 };
 
-  const ordenarLista = (lista, filtro) => {
+  const ordenarLista = (lista, filtro, filtroAsig = null) => {
     if (!lista) return [];
-    const copia = [...lista];
+    let resultado = [...lista];
+    if (filtroAsig) {
+      resultado = resultado.filter(a => a.asignatura === filtroAsig.id);
+    }
     if (filtro === 'Dificultad') {
-      return copia.sort((a, b) =>
+      return resultado.sort((a, b) =>
         (DIFICULTAD_ORDEN[a.difficulty] ?? 99) - (DIFICULTAD_ORDEN[b.difficulty] ?? 99)
       );
     }
     if (filtro === 'Horas estimadas') {
-      return copia.sort((a, b) => (b.horas_estimadas || 0) - (a.horas_estimadas || 0));
+      return resultado.sort((a, b) => (b.horas_estimadas || 0) - (a.horas_estimadas || 0));
     }
     if (filtro === 'Fecha') {
-      return copia.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+      return resultado.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
     }
     if (filtro === 'Progreso') {
       const calcProg = (a) => {
-        // Usar progreso_horas que viene del backend, o calcularlo
         if (a.progreso_horas !== undefined) return a.progreso_horas;
         if (!a.horas_estimadas || a.horas_estimadas === 0) return 0;
         return Math.round((a.horas_trabajadas || 0) / a.horas_estimadas * 100);
       };
-      return copia.sort((a, b) => calcProg(a) - calcProg(b));
+      return resultado.sort((a, b) => calcProg(a) - calcProg(b));
     }
-    if (filtro === 'Asignatura') {
-      return copia.sort((a, b) => {
-        const aA = (a.asignatura || '').toString().toLowerCase();
-        const bA = (b.asignatura || '').toString().toLowerCase();
-        return aA.localeCompare(bA);
-      });
-    }
-    return copia;
+    return resultado;
   };
 
   const cargarTareas = async () => {
@@ -112,6 +123,8 @@ const Dashboard = () => {
       const json = await res.json();
       if (json.status === 'success' && json.data) {
         setTareasData(json.data);
+        // Recargar asignaturas para tener nombres frescos
+        cargarAsignaturas();
       } else {
         setTareasData({ vencidas: [], hoy: [], proximas: [], contadores: { hoy: 0, esta_semana: 0, atrasadas: 0 } });
       }
@@ -166,7 +179,7 @@ const Dashboard = () => {
     return `${d}/${m}/${y}`;
   };
 
-  const ActividadCard = ({ actividad, idx }) => (
+  const ActividadCard = ({ actividad, idx, soloEliminar }) => (
     <div style={{display:'flex', flexDirection:'row', alignItems:'center', justifyContent:'space-between', padding:'14px 16px', borderBottom:'1px solid #f1f1f1', borderRadius:'8px', transition:'background 0.15s', cursor:'default'}}>
       <div style={{display:'flex', flexDirection:'row', alignItems:'center', gap:14, flex:1, minWidth:0, cursor:'pointer'}} onClick={() => setActividadDetalle(actividad)}>
         <div className="activity-number">{idx + 1}</div>
@@ -189,7 +202,9 @@ const Dashboard = () => {
         </div>
       </div>
       <div style={{display:'flex', flexDirection:'row', alignItems:'center', gap:4, flexShrink:0, marginLeft:16}}>
-        <button className="card-btn-edit" title="Editar" onClick={e => { e.stopPropagation(); setEditandoActividad(actividad); }}><IconEdit /></button>
+        {!soloEliminar && (
+          <button className="card-btn-edit" title="Editar" onClick={e => { e.stopPropagation(); setEditandoActividad(actividad); }}><IconEdit /></button>
+        )}
         <button className="card-btn-del" title="Eliminar" onClick={e => { e.stopPropagation(); setConfirmarEliminar(actividad); }}><IconTrash /></button>
       </div>
     </div>
@@ -217,7 +232,88 @@ const Dashboard = () => {
     </div>
   );
 
+  const [filtroAsignaturaHoy, setFiltroAsignaturaHoy]         = useState(null);
+  const [filtroAsignaturaProximas, setFiltroAsignaturaProximas] = useState(null);
+  const [dropdownAsigHoy, setDropdownAsigHoy]                 = useState(false);
+  const [dropdownAsigProximas, setDropdownAsigProximas]       = useState(false);
+  const refAsigHoy      = useRef(null);
+  const refAsigProximas = useRef(null);
+
+  // Obtener asignaturas únicas de las actividades — cruza con nombres disponibles
+  const getAsignaturasUnicas = (lista) => {
+    if (!lista) return [];
+    const mapa = {};
+    lista.forEach(a => {
+      if (a.asignatura) {
+        const info = asignaturasDisponibles.find(x => x.id === a.asignatura);
+        if (info) mapa[a.asignatura] = info.nombre;
+        else mapa[a.asignatura] = `Asignatura ${a.asignatura}`;
+      }
+    });
+    return Object.entries(mapa).map(([id, nombre]) => ({ id: parseInt(id), nombre }));
+  };
+
+  const filtrarPorAsignatura = (lista, seccion) => {
+    const filtro = seccion === 'hoy' ? filtroAsignaturaHoy : filtroAsignaturaProximas;
+    if (!filtro) return lista;
+    return lista.filter(a => a.asignatura === filtro);
+  };
+
+  const AsignaturaDropdown = ({ seccion }) => {
+    const refEl = seccion === 'hoy' ? refAsigHoy : refAsigProximas;
+    const dropdown = seccion === 'hoy' ? dropdownAsigHoy : dropdownAsigProximas;
+    const setDropdown = seccion === 'hoy' ? setDropdownAsigHoy : setDropdownAsigProximas;
+    const filtroActual = seccion === 'hoy' ? filtroAsignaturaHoy : filtroAsignaturaProximas;
+    const setFiltro = seccion === 'hoy' ? setFiltroAsignaturaHoy : setFiltroAsignaturaProximas;
+    const lista = getAsignaturasUnicas(seccion === 'hoy' ? tareasData?.hoy : tareasData?.proximas);
+
+    // Solo mostrar si hay actividades con asignatura
+    if (lista.length === 0) return null;
+
+    const nombreActual = lista.find(a => a.id === filtroActual)?.nombre;
+
+    return (
+      <div className="filtro-wrapper" ref={refEl}>
+        <button
+          className="filtro-btn"
+          style={filtroActual ? {borderColor:'#2563eb', color:'#2563eb', fontWeight:600} : {}}
+          onClick={() => setDropdown(d => !d)}
+        >
+          {nombreActual || 'Asignatura'} <span className="filtro-chevron">▾</span>
+        </button>
+        {dropdown && (
+          <div className="filtro-menu" style={{minWidth:180}}>
+            <div
+              className={`filtro-item ${!filtroActual ? 'filtro-activo' : ''}`}
+              onClick={() => { setFiltro(null); setDropdown(false); }}
+            >
+              {!filtroActual && <span className="filtro-check">✓</span>} Todas
+            </div>
+            {lista.map(a => (
+              <div
+                key={a.id}
+                className={`filtro-item ${filtroActual === a.id ? 'filtro-activo' : ''}`}
+                onClick={() => { setFiltro(a.id); setDropdown(false); }}
+              >
+                {filtroActual === a.id && <span className="filtro-check">✓</span>} {a.nombre}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const contadores = tareasData?.contadores || { hoy: 0, esta_semana: 0, atrasadas: 0 };
+
+  // Recalcular esta_semana = hoy + próximas dentro de 7 días
+  const hoy = new Date();
+  hoy.setHours(0,0,0,0);
+  const finSemana = new Date(hoy); finSemana.setDate(hoy.getDate() + 7);
+  const proximasSemana = (tareasData?.proximas || []).filter(a => {
+    const d = new Date(a.due_date); return d >= hoy && d <= finSemana;
+  }).length;
+  const estaSemanaTotal = (tareasData?.hoy?.length || 0) + proximasSemana;
 
   return (
     <div className="dashboard-container">
@@ -259,7 +355,7 @@ const Dashboard = () => {
           </div>
           <div className="stat-card">
             <h3>Esta Semana</h3>
-            <div className="stat-number purple">{contadores.esta_semana}</div>
+            <div className="stat-number purple">{estaSemanaTotal}</div>
             <div className="stat-desc">actividades programadas</div>
           </div>
           <div className="stat-card">
@@ -288,7 +384,7 @@ const Dashboard = () => {
                   <p><strong>¡¡Muy bien, sigue así!!</strong></p>
                 </div>
               ) : (
-                tareasData.vencidas.map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
+                tareasData.vencidas.map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} soloEliminar={true} />)
               )}
             </div>
 
@@ -297,6 +393,7 @@ const Dashboard = () => {
               <div className="section-header section-header-actions">
                 <span><span>🕒</span> Prioridades para Hoy</span>
                 <div className="section-acciones">
+                  <AsignaturaDropdown seccion="hoy" />
                   <FiltroDropdown
                     filtro={filtroHoy} dropdown={dropdownHoy}
                     setDropdown={setDropdownHoy} onChange={cambiarFiltroHoy}
@@ -314,7 +411,7 @@ const Dashboard = () => {
                   <button className="create-btn" onClick={() => setMostrarCrear(true)}>Crear nueva actividad</button>
                 </div>
               ) : (
-                ordenarLista(tareasData.hoy, filtroHoy).map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
+                filtrarPorAsignatura(ordenarLista(tareasData.hoy, filtroHoy), 'hoy').map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
               )}
             </div>
 
@@ -323,6 +420,7 @@ const Dashboard = () => {
               <div className="section-header section-header-actions">
                 <span><span>📅</span> Próximas Actividades</span>
                 <div className="section-acciones">
+                  <AsignaturaDropdown seccion="proximas" />
                   <FiltroDropdown
                     filtro={filtroProximas} dropdown={dropdownProximas}
                     setDropdown={setDropdownProximas} onChange={cambiarFiltroProximas}
@@ -340,7 +438,7 @@ const Dashboard = () => {
                   <button className="create-btn" onClick={() => setMostrarCrear(true)}>Crear nueva actividad</button>
                 </div>
               ) : (
-                ordenarLista(tareasData.proximas, filtroProximas).map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
+                filtrarPorAsignatura(ordenarLista(tareasData.proximas, filtroProximas), 'proximas').map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
               )}
             </div>
           </>

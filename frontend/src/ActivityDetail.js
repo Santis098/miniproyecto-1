@@ -29,7 +29,8 @@ const IconSpinner = () => (
 function ActivityDetail({ actividad, onClose, onActualizado }) {
   const [editandoAsignatura, setEditandoAsignatura] = useState(false);
   const [asignaturaInput, setAsignaturaInput]       = useState('');
-  const [asignaturaMostrada, setAsignaturaMostrada] = useState(actividad?.asignatura || null);
+  const [asignaturaMostrada, setAsignaturaMostrada] = useState(null);
+  const [asignaturaCargada, setAsignaturaCargada]   = useState(false);
 
   // Todos los hooks primero, sin excepcion
   const [subtasks, setSubtasks]               = useState([]);
@@ -56,16 +57,20 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     if (actividad) {
       setHorasTrabajadas(actividad.horas_trabajadas || 0);
       setHorasInput(String(actividad.horas_trabajadas || 0));
-      // Buscar nombre de asignatura si viene como ID
       if (actividad.asignatura && typeof actividad.asignatura === 'number') {
+        setAsignaturaCargada(false);
         fetch(`${API_BASE}/api/asignaturas/${actividad.asignatura}/`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
           .then(r => r.json())
-          .then(d => { if (d?.data?.nombre) setAsignaturaMostrada(d.data.nombre); })
-          .catch(() => {});
+          .then(d => { setAsignaturaMostrada(d?.data?.nombre || null); setAsignaturaCargada(true); })
+          .catch(() => { setAsignaturaMostrada(null); setAsignaturaCargada(true); });
       } else if (actividad.asignatura && typeof actividad.asignatura === 'object') {
         setAsignaturaMostrada(actividad.asignatura.nombre);
+        setAsignaturaCargada(true);
+      } else {
+        setAsignaturaMostrada(null);
+        setAsignaturaCargada(true);
       }
     }
   }, [actividad]);
@@ -298,7 +303,10 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
               ) : (
                 <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <span className="detail-info-value">
-                    {asignaturaMostrada || <span style={{color:'#aaa', fontStyle:'italic'}}>Sin asignatura</span>}
+                    {!asignaturaCargada
+                      ? <span style={{color:'#aaa', fontStyle:'italic'}}>...</span>
+                      : asignaturaMostrada || <span style={{color:'#aaa', fontStyle:'italic'}}>Sin asignatura</span>
+                    }
                   </span>
                   <button className="horas-editar-btn" onClick={() => { setAsignaturaInput(asignaturaMostrada || ''); setEditandoAsignatura(true); }}>
                     <IconEdit />
