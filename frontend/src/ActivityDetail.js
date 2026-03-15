@@ -27,7 +27,9 @@ const IconSpinner = () => (
 );
 
 function ActivityDetail({ actividad, onClose, onActualizado }) {
-  const token = localStorage.getItem("token");
+  const [editandoAsignatura, setEditandoAsignatura] = useState(false);
+  const [asignaturaInput, setAsignaturaInput]       = useState('');
+  const [asignaturaMostrada, setAsignaturaMostrada] = useState(actividad?.asignatura || null);
 
   // Todos los hooks primero, sin excepcion
   const [subtasks, setSubtasks]               = useState([]);
@@ -47,11 +49,24 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const [loadingGuardar, setLoadingGuardar]   = useState(false);
   const [loadingEditar, setLoadingEditar]     = useState(null);
 
+  const token = localStorage.getItem("token");
+
   // Sincronizar horas cuando cambia la actividad
   useEffect(() => {
     if (actividad) {
       setHorasTrabajadas(actividad.horas_trabajadas || 0);
       setHorasInput(String(actividad.horas_trabajadas || 0));
+      // Buscar nombre de asignatura si viene como ID
+      if (actividad.asignatura && typeof actividad.asignatura === 'number') {
+        fetch(`${API_BASE}/api/asignaturas/${actividad.asignatura}/`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+          .then(r => r.json())
+          .then(d => { if (d?.data?.nombre) setAsignaturaMostrada(d.data.nombre); })
+          .catch(() => {});
+      } else if (actividad.asignatura && typeof actividad.asignatura === 'object') {
+        setAsignaturaMostrada(actividad.asignatura.nombre);
+      }
     }
   }, [actividad]);
 
@@ -135,6 +150,40 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       if (onActualizado) onActualizado();
     } catch (err) { console.error(err); }
     setLoadingGuardar(false);
+  };
+
+  const resolverAsignatura = async (nombre) => {
+    if (!nombre.trim()) return null;
+    try {
+      const res = await fetch(`${API_BASE}/api/asignaturas/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      const lista = Array.isArray(data?.data) ? data.data : [];
+      const existe = lista.find(a => a.nombre.toLowerCase() === nombre.trim().toLowerCase());
+      if (existe) return { id: existe.id, nombre: existe.nombre };
+      const crear = await fetch(`${API_BASE}/api/asignaturas/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ nombre: nombre.trim(), codigo: nombre.trim().substring(0,10).toUpperCase().replace(/ /g,'_'), creditos: 0 })
+      });
+      const nueva = await crear.json();
+      return nueva?.data ? { id: nueva.data.id, nombre: nueva.data.nombre } : null;
+    } catch { return null; }
+  };
+
+  const guardarAsignatura = async () => {
+    try {
+      const resultado = await resolverAsignatura(asignaturaInput);
+      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ asignatura: resultado?.id || null })
+      });
+      setAsignaturaMostrada(resultado?.nombre || null);
+      setEditandoAsignatura(false);
+      if (onActualizado) onActualizado();
+    } catch (err) { console.error(err); }
   };
 
   const crearSubtask = async () => {
@@ -221,22 +270,42 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
               <span className="detail-info-label">Entrega:</span>
               <span className="detail-info-value">{formatFecha(actividad.due_date)}</span>
             </div>
-            {actividad.asignatura && (
-              <div className="detail-info-item">
-                <span className="detail-info-label">Asignatura:</span>
-                <span className="detail-info-value">{actividad.asignatura}</span>
-              </div>
-            )}
-            <div className="detail-info-item">
-              <span className="detail-info-label">Horas:</span>
-              <span className="detail-info-value">{horasTrabajadas}h / {horas_estimadas}h</span>
-            </div>
             {actividad.difficulty && (
               <div className="detail-info-item">
                 <span className="detail-info-label">Dificultad:</span>
                 <span className="detail-info-value" style={{textTransform:"capitalize"}}>{actividad.difficulty}</span>
               </div>
             )}
+            <div className="detail-info-item">
+              <span className="detail-info-label">Horas:</span>
+              <span className="detail-info-value">{horasTrabajadas}h / {horas_estimadas}h</span>
+            </div>
+            <div className="detail-info-item">
+              <span className="detail-info-label">Asignatura:</span>
+              {editandoAsignatura ? (
+                <div style={{display:'flex', gap:6, alignItems:'center', marginTop:2}}>
+                  <input
+                    style={{flex:1, padding:'4px 8px', border:'1px solid #2563eb', borderRadius:6, fontSize:13, outline:'none'}}
+                    value={asignaturaInput}
+                    onChange={e => setAsignaturaInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') guardarAsignatura(); if (e.key === 'Escape') setEditandoAsignatura(false); }}
+                    placeholder="Ej: Matemáticas"
+                    autoFocus
+                  />
+                  <button className="horas-btn-ok" onClick={guardarAsignatura}>✓</button>
+                  <button className="horas-btn-cancel" onClick={() => setEditandoAsignatura(false)}>✕</button>
+                </div>
+              ) : (
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
+                  <span className="detail-info-value">
+                    {asignaturaMostrada || <span style={{color:'#aaa', fontStyle:'italic'}}>Sin asignatura</span>}
+                  </span>
+                  <button className="horas-editar-btn" onClick={() => { setAsignaturaInput(asignaturaMostrada || ''); setEditandoAsignatura(true); }}>
+                    <IconEdit />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="detail-progreso-section">

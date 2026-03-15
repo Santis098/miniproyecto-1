@@ -59,6 +59,26 @@ function CreateActivity({ onClose, onActivityCreated }) {
     setEditandoSubId(null); setEditandoSubTitulo('');
   };
 
+  const resolverAsignatura = async (nombre, token) => {
+    if (!nombre.trim()) return null;
+    try {
+      const res = await fetch(`${API_BASE}/api/asignaturas/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      const lista = Array.isArray(data?.data) ? data.data : [];
+      const existe = lista.find(a => a.nombre.toLowerCase() === nombre.trim().toLowerCase());
+      if (existe) return existe.id;
+      const crear = await fetch(`${API_BASE}/api/asignaturas/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ nombre: nombre.trim(), codigo: nombre.trim().substring(0,10).toUpperCase().replace(/ /g,'_'), creditos: 0 })
+      });
+      const nueva = await crear.json();
+      return nueva?.data?.id || null;
+    } catch { return null; }
+  };
+
   const manejarEnvio = async () => {
     if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
     if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
@@ -70,6 +90,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
 
     setError(''); setLoading(true);
     const token = localStorage.getItem('token');
+    const asignaturaId = await resolverAsignatura(asignatura, token);
 
     const nuevaActividad = {
       title: titulo,
@@ -79,6 +100,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
       activity_type: tipo,
       difficulty: dificultad,
       horas_estimadas: horasEstimadas ? parseFloat(horasEstimadas) : 0,
+      ...(asignaturaId && { asignatura: asignaturaId }),
     };
 
     try {
@@ -148,8 +170,8 @@ function CreateActivity({ onClose, onActivityCreated }) {
 
             {/* ASIGNATURA */}
             <div className="ca-campo">
-              <label className="ca-label">Asignatura *</label>
-              <input className="ca-input" type="text" placeholder="Ej: Impactos Ambientales"
+              <label className="ca-label">Asignatura</label>
+              <input className="ca-input" type="text" placeholder="Ej: Matemáticas"
                 value={asignatura} onChange={e => setAsignatura(e.target.value)} />
             </div>
 

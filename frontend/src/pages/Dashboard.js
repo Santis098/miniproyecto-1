@@ -25,8 +25,8 @@ const IconSpinner = () => (
     <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
   </svg>
 );
-const FILTROS = ['Dificultad', 'Horas estimadas', 'Fecha'];
-const FILTROS_SIN_FECHA = ['Dificultad', 'Horas estimadas'];
+const FILTROS = ['Dificultad', 'Horas estimadas', 'Fecha', 'Progreso', 'Asignatura'];
+const FILTROS_SIN_FECHA = ['Dificultad', 'Horas estimadas', 'Progreso', 'Asignatura'];
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -40,7 +40,7 @@ const Dashboard = () => {
   const [eliminando, setEliminando]               = useState(false);
   const [exitoMsg, setExitoMsg]                   = useState('');
   const [editandoActividad, setEditandoActividad] = useState(null);
-  const [filtroHoy, setFiltroHoy]             = useState('Dificultad');
+  const [filtroHoy, setFiltroHoy]             = useState('Progreso');
   const [filtroProximas, setFiltroProximas]   = useState('Fecha');
   const [dropdownHoy, setDropdownHoy]         = useState(false);
   const [dropdownProximas, setDropdownProximas] = useState(false);
@@ -83,6 +83,22 @@ const Dashboard = () => {
     }
     if (filtro === 'Fecha') {
       return copia.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+    }
+    if (filtro === 'Progreso') {
+      const calcProg = (a) => {
+        // Usar progreso_horas que viene del backend, o calcularlo
+        if (a.progreso_horas !== undefined) return a.progreso_horas;
+        if (!a.horas_estimadas || a.horas_estimadas === 0) return 0;
+        return Math.round((a.horas_trabajadas || 0) / a.horas_estimadas * 100);
+      };
+      return copia.sort((a, b) => calcProg(a) - calcProg(b));
+    }
+    if (filtro === 'Asignatura') {
+      return copia.sort((a, b) => {
+        const aA = (a.asignatura || '').toString().toLowerCase();
+        const bA = (b.asignatura || '').toString().toLowerCase();
+        return aA.localeCompare(bA);
+      });
     }
     return copia;
   };
