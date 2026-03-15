@@ -118,12 +118,12 @@ class ActivitySerializer(serializers.ModelSerializer):
         return None
 
     def validate_due_date(self, value):
-        if value < timezone.now().date():
+        if value < timezone.localdate():
             raise serializers.ValidationError("La fecha de vencimiento no puede ser anterior a la fecha actual.")
         return value
 
     def validate_start_date(self, value):
-        if value < timezone.now().date():
+        if value < timezone.localdate():
             raise serializers.ValidationError(
             "La fecha de inicio no puede ser anterior a la fecha actual."
         )
