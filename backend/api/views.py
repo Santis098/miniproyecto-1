@@ -243,7 +243,7 @@ class TareasHoyView(BaseView, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        hoy = timezone.now().date()
+        hoy = timezone.localdate()
         fin_semana = hoy + timezone.timedelta(days=7)
         tareas = Activity.objects.filter(usuario=request.user)
 
