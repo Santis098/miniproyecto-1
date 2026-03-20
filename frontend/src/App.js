@@ -25,8 +25,6 @@ function App() {
         {/* Rutas Públicas */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Registrar />} />
-
-        {/* Ruta Protegida: Reemplazamos la vista temporal por tu Dashboard real */}
         <Route 
           path="/hoy" 
           element={
