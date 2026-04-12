@@ -75,7 +75,8 @@ class LoginView(BaseView, APIView):
 
         refresh = RefreshToken.for_user(user)
         return self.success({
-            "username": user.username,
+            "nombre": user.nombre,
+            "apellido": user.apellido,
             "email": user.email,
             "rol": user.rol,
             "access": str(refresh.access_token),

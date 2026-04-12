@@ -10,27 +10,30 @@ from django.contrib.auth.password_validation import validate_password
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
-    username = serializers.CharField(required=True)
+    nombre = serializers.CharField(required=True)
+    apellido = serializers.CharField(required=True)
 
     class Meta:
         model = Usuario
-        fields = ('username', 'email', 'password', 'password2')
-        extra_kwargs = {
-            'username': {'validators': []},  # desactivar validador por defecto de Django
-        }
+        fields = ('nombre', 'apellido', 'email', 'password', 'password2')
 
-    def validate_username(self, value):
+    def validate_nombre(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Ingresa los datos para el registro.")
-        if len(value.strip()) < 4:
-            raise serializers.ValidationError("Ingresa minimo 4 caracteres.")
-        if Usuario.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Este nombre de usuario ya esta registrado.")
-        return value
+            raise serializers.ValidationError("Ingresa tu nombre.")
+        if len(value.strip()) < 2:
+            raise serializers.ValidationError("El nombre debe tener al menos 2 caracteres.")
+        return value.strip()
+
+    def validate_apellido(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Ingresa tu apellido.")
+        if len(value.strip()) < 2:
+            raise serializers.ValidationError("El apellido debe tener al menos 2 caracteres.")
+        return value.strip()
 
     def validate_email(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Ingresa los datos para el registro.")
+            raise serializers.ValidationError("Ingresa tu correo electronico.")
         if Usuario.objects.filter(email=value).exists():
             raise serializers.ValidationError("Este correo electronico ya esta registrado.")
         return value
@@ -47,10 +50,15 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('password2')
+        import uuid
+        # Generar username unico a partir del email
+        username = validated_data['email'].split('@')[0] + '_' + str(uuid.uuid4())[:4]
         user = Usuario.objects.create_user(
-            username=validated_data['username'],
+            username=username,
             email=validated_data['email'],
-            password=validated_data['password']
+            password=validated_data['password'],
+            nombre=validated_data['nombre'],
+            apellido=validated_data['apellido'],
         )
         return user
 
@@ -75,6 +83,9 @@ class AsignaturaSerializer(serializers.ModelSerializer):
 # ==============================
 
 class SubtaskSerializer(serializers.ModelSerializer):
+    fecha = serializers.DateField(required=False, allow_null=True)
+    horas_estimadas = serializers.FloatField(required=False, allow_null=True, default=0)
+
     class Meta:
         model = Subtask
         fields = '__all__'
@@ -82,7 +93,7 @@ class SubtaskSerializer(serializers.ModelSerializer):
     def validate_title(self, value):
         if len(value.strip()) < 3:
             raise serializers.ValidationError(
-                "El título debe tener al menos 3 caracteres."
+                "El titulo debe tener al menos 3 caracteres."
             )
         return value
 
