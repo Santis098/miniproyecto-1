@@ -140,13 +140,36 @@
   font-size: 0.8rem;
 }
 
-/* Secciones (Prioridades y Próximas) */
+/* ===== Grid para las 3 columnas principales ===== */
+.sections-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: stretch; /* Estira todas las columnas a la misma altura */
+}
+
+/* Tarjeta General (Columna) */
 .section-card {
   background: white;
   border: 1px solid #dfe1e6;
   border-radius: 8px;
   padding: 20px;
-  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 520px; /* Altura estática para garantizar que todas sean iguales */
+}
+
+/* Dependiendo del diseño base de la tarjeta */
+.section-card:nth-child(1) { border-top: 4px solid #de350b; }
+.section-card:nth-child(2) { border-top: 4px solid #0052cc; }
+.section-card:nth-child(3) { border-top: 4px solid #6554c0; }
+
+/* Contenedor del Título y Filtros - Asegura que todos arranquen el contenido en la misma línea */
+.section-header-area {
+  height: 85px; /* Fijamos la altura estricta para alinear perfectamente los mensajes vacíos */
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
 }
 
 .section-header {
@@ -158,14 +181,79 @@
   margin-bottom: 20px;
 }
 
-/* Estado Vacío (Prioridades) */
-.empty-state {
+/* Contenedor scrolleable donde van las tareas (o el mensaje vacío) */
+.section-body {
+  flex: 1; /* Ocupa todo el espacio sobrante hacia abajo */
+  overflow-y: auto; /* Activa el scroll si hay muchas tareas */
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-right: 5px; /* Pequeño espacio para que el scrollbar no pegue al borde */
+}
+
+/* Scrollbar personalizado y más limpio */
+.section-body::-webkit-scrollbar {
+  width: 6px;
+}
+.section-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+.section-body::-webkit-scrollbar-thumb {
+  background: #c1c7d0;
+  border-radius: 4px;
+}
+.section-body::-webkit-scrollbar-thumb:hover {
+  background: #a5adba;
+}
+
+
+/* ===== Estado Global Vacío (Empty State) ===== */
+.global-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 0;
+  padding: 80px 20px;
+  background: white;
+  border: 1px dashed #dfe1e6;
+  border-radius: 12px;
+  text-align: center;
+  margin-top: 10px;
+}
+
+.create-btn-primary {
+  padding: 12px 28px;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);
+}
+
+.create-btn-primary:hover {
+  background-color: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.create-btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Estado Vacío de cada columna (Interiores) */
+.empty-state {
+  flex: 1; /* Obliga al mensaje a usar toda la altura del .section-body */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center; /* Lo centra perfectamente a la misma altura en los 3 */
   color: #5e6c84;
+  text-align: center;
+  height: 100%;
 }
 
 .success-icon {
@@ -187,7 +275,7 @@
 
 .create-btn:hover { background: #f4f5f7; }
 
-/* Lista de Próximas Actividades */
+/* Lista de Actividades */
 .activity-item {
   display: flex;
   align-items: center;
@@ -252,6 +340,7 @@
 }
 
 .ajustar-btn:hover { background: #f4f5f7; }
+
 /* ===== FILTROS ===== */
 .section-header-actions {
   display: flex;
@@ -376,4 +465,7 @@
   z-index: 3000; animation: slideUp 0.3s ease;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slideUp { 
+  from { transform: translate(-50%, 20px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}

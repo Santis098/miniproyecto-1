@@ -49,6 +49,13 @@ const Dashboard = () => {
   const refHoy      = useRef(null);
   const refProximas = useRef(null);
 
+  const [filtroAsignaturaHoy, setFiltroAsignaturaHoy]         = useState(null);
+  const [filtroAsignaturaProximas, setFiltroAsignaturaProximas] = useState(null);
+  const [dropdownAsigHoy, setDropdownAsigHoy]                 = useState(false);
+  const [dropdownAsigProximas, setDropdownAsigProximas]       = useState(false);
+  const refAsigHoy      = useRef(null);
+  const refAsigProximas = useRef(null);
+
   const currentDate = new Date().toLocaleDateString('es-ES', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
@@ -123,7 +130,6 @@ const Dashboard = () => {
       const json = await res.json();
       if (json.status === 'success' && json.data) {
         setTareasData(json.data);
-        // Recargar asignaturas para tener nombres frescos
         cargarAsignaturas();
       } else {
         setTareasData({ vencidas: [], hoy: [], proximas: [], contadores: { hoy: 0, esta_semana: 0, atrasadas: 0 } });
@@ -210,7 +216,6 @@ const Dashboard = () => {
     </div>
   );
 
-  // Dropdown de filtro reutilizable
   const FiltroDropdown = ({ filtro, dropdown, setDropdown, onChange, refEl, sinFecha }) => (
     <div className="filtro-wrapper" ref={refEl}>
       <button className="filtro-btn" onClick={() => setDropdown(d => !d)}>
@@ -232,14 +237,6 @@ const Dashboard = () => {
     </div>
   );
 
-  const [filtroAsignaturaHoy, setFiltroAsignaturaHoy]         = useState(null);
-  const [filtroAsignaturaProximas, setFiltroAsignaturaProximas] = useState(null);
-  const [dropdownAsigHoy, setDropdownAsigHoy]                 = useState(false);
-  const [dropdownAsigProximas, setDropdownAsigProximas]       = useState(false);
-  const refAsigHoy      = useRef(null);
-  const refAsigProximas = useRef(null);
-
-  // Obtener asignaturas únicas de las actividades — cruza con nombres disponibles
   const getAsignaturasUnicas = (lista) => {
     if (!lista) return [];
     const mapa = {};
@@ -267,7 +264,6 @@ const Dashboard = () => {
     const setFiltro = seccion === 'hoy' ? setFiltroAsignaturaHoy : setFiltroAsignaturaProximas;
     const lista = getAsignaturasUnicas(seccion === 'hoy' ? tareasData?.hoy : tareasData?.proximas);
 
-    // Solo mostrar si hay actividades con asignatura
     if (lista.length === 0) return null;
 
     const nombreActual = lista.find(a => a.id === filtroActual)?.nombre;
@@ -306,7 +302,6 @@ const Dashboard = () => {
 
   const contadores = tareasData?.contadores || { hoy: 0, esta_semana: 0, atrasadas: 0 };
 
-  // Recalcular esta_semana = hoy + próximas dentro de 7 días
   const hoy = new Date();
   hoy.setHours(0,0,0,0);
   const finSemana = new Date(hoy); finSemana.setDate(hoy.getDate() + 7);
@@ -314,6 +309,12 @@ const Dashboard = () => {
     const d = new Date(a.due_date); return d >= hoy && d <= finSemana;
   }).length;
   const estaSemanaTotal = (tareasData?.hoy?.length || 0) + proximasSemana;
+
+  // VERIFICACIÓN GLOBAL SI NO HAY NINGUNA ACTIVIDAD
+  const isCompletelyEmpty = tareasData &&
+    (tareasData.vencidas?.length || 0) === 0 &&
+    (tareasData.hoy?.length || 0) === 0 &&
+    (tareasData.proximas?.length || 0) === 0;
 
   return (
     <div className="dashboard-container">
@@ -347,99 +348,130 @@ const Dashboard = () => {
           <p>{currentDate}</p>
         </div>
 
-        <div className="stats-grid">
-          <div className="stat-card">
-            <h3>Hoy</h3>
-            <div className="stat-number blue">{contadores.hoy}</div>
-            <div className="stat-desc">actividades activas</div>
-          </div>
-          <div className="stat-card">
-            <h3>Esta Semana</h3>
-            <div className="stat-number purple">{estaSemanaTotal}</div>
-            <div className="stat-desc">actividades programadas</div>
-          </div>
-          <div className="stat-card">
-            <h3>Atrasadas</h3>
-            <div className="stat-number red">{contadores.atrasadas}</div>
-            <div className="stat-desc">necesitan reprogramación</div>
-          </div>
-        </div>
-
         {loading ? (
           <div className="loading-state">
             <div className="loading-spinner" />
             <p>Cargando actividades...</p>
           </div>
+        ) : isCompletelyEmpty ? (
+          // ESTADO TOTALMENTE VACÍO
+          <div className="global-empty-state">
+            <div className="success-icon" style={{fontSize: '4rem'}}>✅</div>
+            <h2 style={{ color: '#172b4d', margin: '15px 0' }}>No tienes actividades registradas</h2>
+            <p style={{ color: '#5e6c84', marginBottom: '30px' }}>
+              ¡Todo está al día! Disfruta tu tiempo o comienza a planificar.
+            </p>
+            <button className="create-btn-primary" onClick={() => setMostrarCrear(true)}>
+              Crear nueva actividad
+            </button>
+          </div>
         ) : (
           <>
-            {/* ATRASADAS */}
-            <div className="section-card">
-              <div className="section-header">
-                <span>⚠️</span> Actividades Atrasadas
+            <div className="stats-grid">
+              <div className="stat-card">
+                <h3>Atrasadas</h3>
+                <div className="stat-number red">{contadores.atrasadas}</div>
+                <div className="stat-desc">necesitan reprogramación</div>
               </div>
-              {!tareasData?.vencidas?.length ? (
-                <div className="empty-state">
-                  <div className="success-icon">✅</div>
-                  <p>No tienes actividades atrasadas</p>
-                  <p><strong>¡¡Muy bien, sigue así!!</strong></p>
-                </div>
-              ) : (
-                tareasData.vencidas.map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} soloEliminar={true} />)
-              )}
+              <div className="stat-card">
+                <h3>Hoy</h3>
+                <div className="stat-number blue">{contadores.hoy}</div>
+                <div className="stat-desc">actividades activas</div>
+              </div>
+              <div className="stat-card">
+                <h3>Esta Semana</h3>
+                <div className="stat-number purple">{estaSemanaTotal}</div>
+                <div className="stat-desc">actividades programadas</div>
+              </div>
             </div>
 
-            {/* HOY */}
-            <div className="section-card">
-              <div className="section-header section-header-actions">
-                <span><span>🕒</span> Prioridades para Hoy</span>
-                <div className="section-acciones">
-                  <AsignaturaDropdown seccion="hoy" />
-                  <FiltroDropdown
-                    filtro={filtroHoy} dropdown={dropdownHoy}
-                    setDropdown={setDropdownHoy} onChange={cambiarFiltroHoy}
-                    refEl={refHoy} sinFecha={true}
-                  />
-                  <button className="create-btn" onClick={() => setMostrarCrear(true)}>+ Agregar actividad</button>
+            {/* CONTENEDOR EN FORMA DE CUADRÍCULA PARA LAS 3 COLUMNAS */}
+            <div className="sections-grid">
+              
+              {/* === ATRASADAS === */}
+              <div className="section-card">
+                <div className="section-header-area">
+                  <div className="section-header">
+                    <span>⚠️</span> Actividades Atrasadas
+                  </div>
+                </div>
+                <div className="section-body">
+                  {!tareasData?.vencidas?.length ? (
+                    <div className="empty-state">
+                      <div className="success-icon">✅</div>
+                      {/* Aquí se eliminó el "Muy bien sigue así" */}
+                      <p>No tienes actividades atrasadas</p>
+                    </div>
+                  ) : (
+                    tareasData.vencidas.map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} soloEliminar={true} />)
+                  )}
                 </div>
               </div>
-              {loadingSeccion.hoy ? (
-                <div className="loading-state mini"><div className="loading-spinner small" /><p>Aplicando filtro...</p></div>
-              ) : !tareasData?.hoy?.length ? (
-                <div className="empty-state">
-                  <div className="success-icon">✅</div>
-                  <p>No tienes actividades programadas para hoy</p>
-                  <button className="create-btn" onClick={() => setMostrarCrear(true)}>Crear nueva actividad</button>
-                </div>
-              ) : (
-                filtrarPorAsignatura(ordenarLista(tareasData.hoy, filtroHoy), 'hoy').map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
-              )}
-            </div>
 
-            {/* PRÓXIMAS */}
-            <div className="section-card">
-              <div className="section-header section-header-actions">
-                <span><span>📅</span> Próximas Actividades</span>
-                <div className="section-acciones">
-                  <AsignaturaDropdown seccion="proximas" />
-                  <FiltroDropdown
-                    filtro={filtroProximas} dropdown={dropdownProximas}
-                    setDropdown={setDropdownProximas} onChange={cambiarFiltroProximas}
-                    refEl={refProximas}
-                  />
-                  <button className="create-btn" onClick={() => setMostrarCrear(true)}>+ Agregar actividad</button>
+              {/* === HOY === */}
+              <div className="section-card">
+                <div className="section-header-area">
+                  <div className="section-header section-header-actions">
+                    <span><span>🕒</span> Prioridades para Hoy</span>
+                    <div className="section-acciones">
+                      <button className="create-btn" onClick={() => setMostrarCrear(true)} style={{marginTop: 0, padding: '6px 12px', fontSize: '13px'}}>+ Agregar</button>
+                    </div>
+                  </div>
+                  <div className="filtros-container" style={{display: 'flex', gap: 10}}>
+                    <AsignaturaDropdown seccion="hoy" />
+                    <FiltroDropdown
+                        filtro={filtroHoy} dropdown={dropdownHoy}
+                        setDropdown={setDropdownHoy} onChange={cambiarFiltroHoy}
+                        refEl={refHoy} sinFecha={true}
+                      />
+                  </div>
+                </div>
+                <div className="section-body">
+                  {loadingSeccion.hoy ? (
+                    <div className="loading-state mini"><div className="loading-spinner small" /><p>Aplicando filtro...</p></div>
+                  ) : !tareasData?.hoy?.length ? (
+                    <div className="empty-state">
+                      <div className="success-icon">✅</div>
+                      <p>No tienes actividades programadas para hoy</p>
+                    </div>
+                  ) : (
+                    filtrarPorAsignatura(ordenarLista(tareasData.hoy, filtroHoy), 'hoy').map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
+                  )}
                 </div>
               </div>
-              {loadingSeccion.proximas ? (
-                <div className="loading-state mini"><div className="loading-spinner small" /><p>Aplicando filtro...</p></div>
-              ) : !tareasData?.proximas?.length ? (
-                <div className="empty-state">
-                  <div className="success-icon">✅</div>
-                  <p>No tienes próximas actividades</p>
-                  <button className="create-btn" onClick={() => setMostrarCrear(true)}>Crear nueva actividad</button>
+
+              {/* === PRÓXIMAS === */}
+              <div className="section-card">
+                <div className="section-header-area">
+                  <div className="section-header section-header-actions">
+                    <span><span>📅</span> Próximas Actividades</span>
+                    <div className="section-acciones">
+                      <button className="create-btn" onClick={() => setMostrarCrear(true)} style={{marginTop: 0, padding: '6px 12px', fontSize: '13px'}}>+ Agregar</button>
+                    </div>
+                  </div>
+                  <div className="filtros-container" style={{display: 'flex', gap: 10}}>
+                    <AsignaturaDropdown seccion="proximas" />
+                    <FiltroDropdown
+                      filtro={filtroProximas} dropdown={dropdownProximas}
+                      setDropdown={setDropdownProximas} onChange={cambiarFiltroProximas}
+                      refEl={refProximas}
+                    />
+                  </div>
                 </div>
-              ) : (
-                filtrarPorAsignatura(ordenarLista(tareasData.proximas, filtroProximas), 'proximas').map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
-              )}
+                <div className="section-body">
+                  {loadingSeccion.proximas ? (
+                    <div className="loading-state mini"><div className="loading-spinner small" /><p>Aplicando filtro...</p></div>
+                  ) : !tareasData?.proximas?.length ? (
+                    <div className="empty-state">
+                      <div className="success-icon">✅</div>
+                      <p>No tienes próximas actividades</p>
+                    </div>
+                  ) : (
+                    filtrarPorAsignatura(ordenarLista(tareasData.proximas, filtroProximas), 'proximas').map((a, i) => <ActividadCard key={a.id} actividad={a} idx={i} />)
+                  )}
+                </div>
+              </div>
+
             </div>
           </>
         )}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './CreateActivity.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
@@ -11,14 +11,12 @@ const IconTrash = () => (
     <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
   </svg>
 );
-
 const IconEdit = () => (
   <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>
 );
-
 const IconSpinner = () => (
   <svg style={{width:18,height:18,display:'inline-block',verticalAlign:'middle',animation:'spin 0.7s linear infinite'}} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
     <circle cx="12" cy="12" r="10" strokeOpacity="0.25"/>
@@ -26,45 +24,66 @@ const IconSpinner = () => (
   </svg>
 );
 
+// ─────────────────────────────────────────────────────────────
+// CREAR ACTIVIDAD
+// ─────────────────────────────────────────────────────────────
 function CreateActivity({ onClose, onActivityCreated }) {
-  const [titulo, setTitulo]               = useState('');
-  const [descripcion, setDescripcion]     = useState('');
-  const [asignatura, setAsignatura]       = useState('');
-  const [tipo, setTipo]                   = useState('');
-  const [dificultad, setDificultad]       = useState('');
-  const [fecha, setFecha]                 = useState('');
+  const [titulo, setTitulo]             = useState('');
+  const [descripcion, setDescripcion]   = useState('');
+  const [asignatura, setAsignatura]     = useState('');
+  const [tipo, setTipo]                 = useState('');
+  const [dificultad, setDificultad]     = useState('');
+  const [fecha, setFecha]               = useState('');
   const [horasEstimadas, setHorasEstimadas] = useState('');
-  const [subtasks, setSubtasks]           = useState([]);
-  const [nuevoSub, setNuevoSub]           = useState('');
-  const [errorSub, setErrorSub]           = useState('');
+  const [subtasks, setSubtasks]         = useState([]);
+  const [nuevoSub, setNuevoSub]         = useState('');
+  const [nuevoSubFecha, setNuevoSubFecha] = useState('');
+  const [nuevoSubHoras, setNuevoSubHoras] = useState('');
+  const [errorSub, setErrorSub]         = useState('');
   const [editandoSubId, setEditandoSubId] = useState(null);
   const [editandoSubTitulo, setEditandoSubTitulo] = useState('');
-  const [loading, setLoading]             = useState(false);
-  const [error, setError]                 = useState('');
-  const [success, setSuccess]             = useState(false);
+  const [editandoSubFecha, setEditandoSubFecha]   = useState('');
+  const [editandoSubHoras, setEditandoSubHoras]   = useState('');
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState('');
+  const [success, setSuccess]           = useState(false);
 
   const agregarSubtask = () => {
-    if (!nuevoSub.trim()) { setErrorSub('Ingresa un titulo.'); return; }
+    if (!nuevoSub.trim())   { setErrorSub('Ingresa el título de la subtarea.'); return; }
     if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
-    setSubtasks([...subtasks, { titulo: nuevoSub.trim(), id: Date.now() }]);
-    setNuevoSub(''); setErrorSub('');
+    if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha para la subtarea.'); return; }
+    if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
+    setSubtasks([...subtasks, {
+      titulo: nuevoSub.trim(),
+      fecha: nuevoSubFecha,
+      horas: parseFloat(nuevoSubHoras),
+      id: Date.now()
+    }]);
+    setNuevoSub(''); setNuevoSubFecha(''); setNuevoSubHoras(''); setErrorSub('');
   };
 
   const eliminarSubtask = (id) => setSubtasks(subtasks.filter(s => s.id !== id));
 
-  const iniciarEdicionSub = (st) => { setEditandoSubId(st.id); setEditandoSubTitulo(st.titulo); };
+  const iniciarEdicionSub = (st) => {
+    setEditandoSubId(st.id);
+    setEditandoSubTitulo(st.titulo);
+    setEditandoSubFecha(st.fecha);
+    setEditandoSubHoras(st.horas);
+  };
+
   const guardarEdicionSub = (id) => {
-    if (!editandoSubTitulo.trim() || editandoSubTitulo.trim().length < 3) return;
-    setSubtasks(subtasks.map(s => s.id === id ? { ...s, titulo: editandoSubTitulo.trim() } : s));
-    setEditandoSubId(null); setEditandoSubTitulo('');
+    if (!editandoSubTitulo.trim() || !editandoSubFecha || !editandoSubHoras) return;
+    setSubtasks(subtasks.map(s => s.id === id
+      ? { ...s, titulo: editandoSubTitulo.trim(), fecha: editandoSubFecha, horas: parseFloat(editandoSubHoras) }
+      : s
+    ));
+    setEditandoSubId(null); setEditandoSubTitulo(''); setEditandoSubFecha(''); setEditandoSubHoras('');
   };
 
   const resolverAsignatura = async (nombre, token) => {
     if (!nombre.trim()) return null;
     try {
-      const res = await fetch(`${API_BASE}/api/asignaturas/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await fetch(`${API_BASE}/api/asignaturas/`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       const lista = Array.isArray(data?.data) ? data.data : [];
       const existe = lista.find(a => a.nombre.toLowerCase() === nombre.trim().toLowerCase());
@@ -86,29 +105,23 @@ function CreateActivity({ onClose, onActivityCreated }) {
     if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
     if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
     if (!fecha)                   { setError('Selecciona una fecha de actividad.'); return; }
-    if (subtasks.length === 0)    { setError('Agrega al menos una subtarea.'); return; }
     if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
 
     setError(''); setLoading(true);
     const token = localStorage.getItem('token');
     const asignaturaId = await resolverAsignatura(asignatura, token);
 
-    const nuevaActividad = {
-      title: titulo,
-      description: descripcion,
-      start_date: fecha,
-      due_date: fecha,
-      activity_type: tipo,
-      difficulty: dificultad,
-      horas_estimadas: horasEstimadas ? parseFloat(horasEstimadas) : 0,
-      ...(asignaturaId && { asignatura: asignaturaId }),
-    };
-
     try {
       const res = await fetch(API_BASE + '/api/activities/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(nuevaActividad),
+        body: JSON.stringify({
+          title: titulo, description: descripcion,
+          start_date: fecha, due_date: fecha,
+          activity_type: tipo, difficulty: dificultad,
+          horas_estimadas: parseFloat(horasEstimadas),
+          ...(asignaturaId && { asignatura: asignaturaId }),
+        }),
       });
 
       if (res.status === 201) {
@@ -142,41 +155,26 @@ function CreateActivity({ onClose, onActivityCreated }) {
   return (
     <div className="ca-overlay">
       <div className="ca-modal">
-
-        {/* HEADER */}
         <div className="ca-header">
           <h2 className="ca-titulo">Nueva Actividad</h2>
           <button className="ca-cerrar" onClick={onClose}>✕</button>
         </div>
-
         {success && <div className="ca-mensaje ca-exito">✅ Actividad creada exitosamente. Cerrando...</div>}
         {error   && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
-
         {!success && (
           <div className="ca-form">
-
-            {/* TITULO */}
             <div className="ca-campo">
               <label className="ca-label">Título *</label>
-              <input className="ca-input" type="text" placeholder="Ej: Investigar sobre el medio ambiente"
-                value={titulo} onChange={e => setTitulo(e.target.value)} />
+              <input className="ca-input" type="text" placeholder="Ej: Investigar sobre el medio ambiente" value={titulo} onChange={e => setTitulo(e.target.value)} />
             </div>
-
-            {/* DESCRIPCION */}
             <div className="ca-campo">
               <label className="ca-label">Descripción</label>
-              <textarea className="ca-textarea" placeholder="Describe la actividad o notas importante..."
-                value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
+              <textarea className="ca-textarea" placeholder="Describe la actividad o notas importantes..." value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
             </div>
-
-            {/* ASIGNATURA */}
             <div className="ca-campo">
               <label className="ca-label">Asignatura</label>
-              <input className="ca-input" type="text" placeholder="Ej: Matemáticas"
-                value={asignatura} onChange={e => setAsignatura(e.target.value)} />
+              <input className="ca-input" type="text" placeholder="Ej: Matemáticas" value={asignatura} onChange={e => setAsignatura(e.target.value)} />
             </div>
-
-            {/* TIPO Y PRIORIDAD */}
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Tipo *</label>
@@ -203,76 +201,42 @@ function CreateActivity({ onClose, onActivityCreated }) {
                 </div>
               </div>
             </div>
-
-            {/* FECHA Y HORAS */}
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Fecha de actividad *</label>
-                <div className="ca-select-wrapper">
-                  <input className="ca-input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
-                </div>
+                <input className="ca-input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
               </div>
               <div className="ca-campo">
-                <label className="ca-label">Horas estimadas*</label>
+                <label className="ca-label">Horas estimadas *</label>
                 <div className="ca-horas-wrapper">
-                  <input className="ca-input ca-input-horas" type="number" min="0" step="1" placeholder="00 h"
-                    value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
+                  <input className="ca-input ca-input-horas" type="number" min="0" step="1" placeholder="00 h" value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
                 </div>
               </div>
             </div>
 
-            {/* SUBTAREAS */}
-            <div className="ca-campo">
-              <label className="ca-label">Subtarea</label>
+            <SubtareasEditor
+              subtasks={subtasks}
+              nuevoSub={nuevoSub} setNuevoSub={setNuevoSub}
+              nuevoSubFecha={nuevoSubFecha} setNuevoSubFecha={setNuevoSubFecha}
+              nuevoSubHoras={nuevoSubHoras} setNuevoSubHoras={setNuevoSubHoras}
+              errorSub={errorSub} setErrorSub={setErrorSub}
+              editandoSubId={editandoSubId}
+              editandoSubTitulo={editandoSubTitulo} setEditandoSubTitulo={setEditandoSubTitulo}
+              editandoSubFecha={editandoSubFecha} setEditandoSubFecha={setEditandoSubFecha}
+              editandoSubHoras={editandoSubHoras} setEditandoSubHoras={setEditandoSubHoras}
+              onAgregar={agregarSubtask}
+              onEliminar={eliminarSubtask}
+              onIniciarEdicion={iniciarEdicionSub}
+              onGuardarEdicion={guardarEdicionSub}
+              onCancelarEdicion={() => setEditandoSubId(null)}
+            />
 
-              {subtasks.length > 0 && (
-                <ul className="ca-subtasks-lista">
-                  {subtasks.map(st => (
-                    <li key={st.id} className="ca-subtask-item">
-                      {editandoSubId === st.id ? (
-                        <>
-                          <input className="ca-input ca-subtask-edit-input" type="text"
-                            value={editandoSubTitulo}
-                            onChange={e => setEditandoSubTitulo(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') guardarEdicionSub(st.id); if (e.key === 'Escape') setEditandoSubId(null); }}
-                            autoFocus />
-                          <button className="ca-sub-btn ca-sub-btn-ok" type="button" onClick={() => guardarEdicionSub(st.id)}>✓</button>
-                          <button className="ca-sub-btn ca-sub-btn-cancel" type="button" onClick={() => setEditandoSubId(null)}>✕</button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="ca-subtask-punto">⊕</span>
-                          <span className="ca-subtask-texto">{st.titulo}</span>
-                          <div className="ca-subtask-acciones">
-                            <button className="ca-sub-btn ca-sub-btn-edit" type="button" onClick={() => iniciarEdicionSub(st)}><IconEdit /></button>
-                            <button className="ca-sub-btn ca-sub-btn-del" type="button" onClick={() => eliminarSubtask(st.id)}><IconTrash /></button>
-                          </div>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="ca-subtask-input-row">
-                <input className="ca-input" type="text" placeholder="Ej: repasar capítulo 3"
-                  value={nuevoSub}
-                  onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregarSubtask(); } }}
-                />
-                <button className="ca-subtask-add-btn" type="button" onClick={agregarSubtask}>+ Agregar</button>
-              </div>
-              {errorSub && <p className="ca-sub-error">{errorSub}</p>}
-            </div>
-
-            {/* BOTONES */}
             <div className="ca-botones">
               <button className="ca-btn-cancelar" onClick={onClose} disabled={loading}>Cancelar</button>
               <button className="ca-btn-guardar" onClick={manejarEnvio} disabled={loading}>
                 {loading ? <IconSpinner /> : 'Crear actividad'}
               </button>
             </div>
-
           </div>
         )}
       </div>
@@ -282,9 +246,111 @@ function CreateActivity({ onClose, onActivityCreated }) {
 
 export default CreateActivity;
 
-// ============================================================
-// EDITAR ACTIVIDAD — mismo archivo, mismos estilos
-// ============================================================
+// ─────────────────────────────────────────────────────────────
+// COMPONENTE REUTILIZABLE: EDITOR DE SUBTAREAS
+// ─────────────────────────────────────────────────────────────
+export function SubtareasEditor({
+  subtasks,
+  nuevoSub, setNuevoSub,
+  nuevoSubFecha, setNuevoSubFecha,
+  nuevoSubHoras, setNuevoSubHoras,
+  errorSub, setErrorSub,
+  editandoSubId,
+  editandoSubTitulo, setEditandoSubTitulo,
+  editandoSubFecha, setEditandoSubFecha,
+  editandoSubHoras, setEditandoSubHoras,
+  onAgregar, onEliminar, onIniciarEdicion, onGuardarEdicion, onCancelarEdicion
+}) {
+  return (
+    <div className="ca-campo">
+      <label className="ca-label">
+        Subtareas <span style={{color:'#aaa', fontWeight:400}}>(opcional)</span>
+      </label>
+
+      {/* Cabecera de columnas — siempre visible */}
+      <div className="ca-subtask-cols-header">
+        <span>Título</span>
+        <span>Fecha límite</span>
+        <span>Horas</span>
+        <span></span>
+      </div>
+
+      {/* Lista de subtareas existentes */}
+      {subtasks.length > 0 && (
+        <ul className="ca-subtasks-lista">
+          {subtasks.map(st => (
+            <li key={st.id} className="ca-subtask-item">
+              {editandoSubId === st.id ? (
+                <>
+                  <div className="ca-subtask-edit-grid">
+                    <input className="ca-input" type="text" placeholder="Título"
+                      value={editandoSubTitulo} onChange={e => setEditandoSubTitulo(e.target.value)} autoFocus />
+                    <input className="ca-input" type="date"
+                      value={editandoSubFecha} onChange={e => setEditandoSubFecha(e.target.value)} />
+                    <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="h"
+                      value={editandoSubHoras} onChange={e => setEditandoSubHoras(e.target.value)} />
+                  </div>
+                  <div className="ca-subtask-acciones">
+                    <button className="ca-sub-btn ca-sub-btn-ok" type="button" onClick={() => onGuardarEdicion(st.id)}>✓</button>
+                    <button className="ca-sub-btn ca-sub-btn-cancel" type="button" onClick={onCancelarEdicion}>✕</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="ca-subtask-edit-grid">
+                    <span className="ca-subtask-texto">{st.titulo}</span>
+                    <span className="ca-subtask-meta">📅 {st.fecha}</span>
+                    <span className="ca-subtask-meta">⏱ {st.horas}h</span>
+                  </div>
+                  <div className="ca-subtask-acciones">
+                    <button className="ca-sub-btn ca-sub-btn-edit" type="button" onClick={() => onIniciarEdicion(st)}>
+                      <svg style={{width:15,height:15}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button className="ca-sub-btn ca-sub-btn-del" type="button" onClick={() => onEliminar(st.id)}>
+                      <svg style={{width:15,height:15}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6M14 11v6"/>
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Fila para agregar nueva subtarea */}
+      <div className="ca-subtask-input-grid">
+        <input className="ca-input" type="text" placeholder="Título subtarea"
+          value={nuevoSub}
+          onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAgregar(); } }}
+        />
+        <input className="ca-input" type="date"
+          value={nuevoSubFecha}
+          onChange={e => { setNuevoSubFecha(e.target.value); setErrorSub(''); }}
+        />
+        <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="Horas"
+          value={nuevoSubHoras}
+          onChange={e => { setNuevoSubHoras(e.target.value); setErrorSub(''); }}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAgregar(); } }}
+        />
+        <button className="ca-subtask-add-btn" type="button" onClick={onAgregar}>+ Agregar</button>
+      </div>
+      {errorSub && <p className="ca-sub-error">{errorSub}</p>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// EDITAR ACTIVIDAD — con gestión completa de subtareas
+// ─────────────────────────────────────────────────────────────
 export function EditActivity({ actividad, onClose, onActualizado }) {
   const [titulo, setTitulo]             = useState(actividad.title || '');
   const [descripcion, setDescripcion]   = useState(actividad.description || '');
@@ -296,6 +362,140 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
   const [error, setError]               = useState('');
   const [success, setSuccess]           = useState(false);
 
+  // Subtareas: mezclamos las del servidor con metadatos locales (fecha/horas)
+  // Guardamos metadatos en localStorage para persistir fecha y horas por subtarea
+  const STORAGE_KEY = `subtask_meta_${actividad.id}`;
+
+  const getLocalMeta = () => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+  };
+  const saveLocalMeta = (meta) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
+  };
+
+  const [subtasks, setSubtasks]         = useState([]);
+  const [loadingSubs, setLoadingSubs]   = useState(true);
+
+  const [nuevoSub, setNuevoSub]         = useState('');
+  const [nuevoSubFecha, setNuevoSubFecha] = useState('');
+  const [nuevoSubHoras, setNuevoSubHoras] = useState('');
+  const [errorSub, setErrorSub]         = useState('');
+
+  const [editandoSubId, setEditandoSubId] = useState(null);
+  const [editandoSubTitulo, setEditandoSubTitulo] = useState('');
+  const [editandoSubFecha, setEditandoSubFecha]   = useState('');
+  const [editandoSubHoras, setEditandoSubHoras]   = useState('');
+
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    cargarSubtasks();
+  }, []);
+
+  const cargarSubtasks = async () => {
+    setLoadingSubs(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/subtasks/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      const lista = Array.isArray(json?.data) ? json.data
+                  : Array.isArray(json) ? json : [];
+
+      const meta = getLocalMeta();
+
+      // Filtrar subtareas de esta actividad y enriquecer con metadatos locales
+      const filtradas = lista
+        .filter(st => st.activity === actividad.id)
+        .map(st => ({
+          id: st.id,
+          titulo: st.title,
+          fecha: meta[st.id]?.fecha || '',
+          horas: meta[st.id]?.horas || 0,
+          esServidor: true,
+          is_completed: st.is_completed || false,
+        }));
+
+      setSubtasks(filtradas);
+    } catch (err) {
+      console.error('Error cargando subtasks:', err);
+    }
+    setLoadingSubs(false);
+  };
+
+  const agregarSubtask = async () => {
+    if (!nuevoSub.trim())   { setErrorSub('Ingresa el título de la subtarea.'); return; }
+    if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
+    if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha.'); return; }
+    if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/subtasks/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: nuevoSub.trim(), activity: actividad.id })
+      });
+      if (res.status === 201) {
+        const data = await res.json();
+        const newId = data?.data?.id || data?.id;
+        // Guardar metadatos localmente
+        if (newId) {
+          const meta = getLocalMeta();
+          meta[newId] = { fecha: nuevoSubFecha, horas: parseFloat(nuevoSubHoras) };
+          saveLocalMeta(meta);
+        }
+        setNuevoSub(''); setNuevoSubFecha(''); setNuevoSubHoras(''); setErrorSub('');
+        cargarSubtasks();
+      } else {
+        setErrorSub('Error al crear la subtarea.');
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorSub('Error de conexión.');
+    }
+  };
+
+  const eliminarSubtask = async (id) => {
+    try {
+      await fetch(`${API_BASE}/api/subtasks/${id}/`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+      });
+      // Limpiar metadatos locales
+      const meta = getLocalMeta();
+      delete meta[id];
+      saveLocalMeta(meta);
+      cargarSubtasks();
+    } catch (err) { console.error(err); }
+  };
+
+  const iniciarEdicionSub = (st) => {
+    setEditandoSubId(st.id);
+    setEditandoSubTitulo(st.titulo);
+    setEditandoSubFecha(st.fecha || '');
+    setEditandoSubHoras(String(st.horas || ''));
+  };
+
+  const guardarEdicionSub = async (id) => {
+    if (!editandoSubTitulo.trim()) return;
+    try {
+      await fetch(`${API_BASE}/api/subtasks/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: editandoSubTitulo.trim() })
+      });
+      // Guardar fecha y horas localmente
+      const meta = getLocalMeta();
+      meta[id] = {
+        fecha: editandoSubFecha,
+        horas: parseFloat(editandoSubHoras) || 0
+      };
+      saveLocalMeta(meta);
+      setEditandoSubId(null); setEditandoSubTitulo('');
+      setEditandoSubFecha(''); setEditandoSubHoras('');
+      cargarSubtasks();
+    } catch (err) { console.error(err); }
+  };
+
   const manejarEnvio = async () => {
     if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
     if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
@@ -306,23 +506,17 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
     if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
 
     setError(''); setLoading(true);
-    const token = localStorage.getItem('token');
-
     try {
       const res = await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
-          title: titulo,
-          description: descripcion,
-          start_date: fecha,
-          due_date: fecha,
-          activity_type: tipo,
-          difficulty: dificultad,
-          horas_estimadas: horasEstimadas ? parseFloat(horasEstimadas) : 0,
+          title: titulo, description: descripcion,
+          start_date: fecha, due_date: fecha,
+          activity_type: tipo, difficulty: dificultad,
+          horas_estimadas: parseFloat(horasEstimadas),
         }),
       });
-
       if (res.ok) {
         setSuccess(true); setLoading(false);
         setTimeout(() => { if (onActualizado) onActualizado(); }, 1000);
@@ -331,12 +525,11 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
         const errData = datos?.data || datos;
         if (errData?.title) setError('Titulo: ' + errData.title[0]);
         else if (errData?.due_date) setError('Fecha: ' + errData.due_date[0]);
-        else setError('Datos incorrectos. Verifica el formulario.');
+        else setError('Datos incorrectos.');
         setLoading(false);
       }
     } catch (err) {
-      setError('Error de conexión con el servidor.');
-      setLoading(false);
+      setError('Error de conexión.'); setLoading(false);
     }
   };
 
@@ -347,25 +540,18 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
           <h2 className="ca-titulo">Editar Actividad</h2>
           <button className="ca-cerrar" onClick={onClose}>✕</button>
         </div>
-
         {success && <div className="ca-mensaje ca-exito">✅ Actividad actualizada. Cerrando...</div>}
         {error   && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
-
         {!success && (
           <div className="ca-form">
-
             <div className="ca-campo">
               <label className="ca-label">Título *</label>
-              <input className="ca-input" type="text" placeholder="Ej: Examen Final de Matemáticas"
-                value={titulo} onChange={e => setTitulo(e.target.value)} />
+              <input className="ca-input" type="text" value={titulo} onChange={e => setTitulo(e.target.value)} />
             </div>
-
             <div className="ca-campo">
               <label className="ca-label">Descripción</label>
-              <textarea className="ca-textarea" placeholder="Describe los detalles..."
-                value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
+              <textarea className="ca-textarea" value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
             </div>
-
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Tipo *</label>
@@ -392,17 +578,43 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                 </div>
               </div>
             </div>
-
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Fecha de actividad *</label>
                 <input className="ca-input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
               </div>
               <div className="ca-campo">
-                <label className="ca-label">Horas estimadas</label>
+                <label className="ca-label">Horas estimadas *</label>
                 <input className="ca-input" type="number" min="0" step="1" placeholder="00 h"
                   value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
               </div>
+            </div>
+
+            {/* ── SUBTAREAS EN EDICIÓN ── */}
+            <div className="ca-campo">
+              <label className="ca-label">
+                Subtareas
+                {loadingSubs && <span style={{color:'#aaa', fontWeight:400, marginLeft:8, fontSize:12}}>cargando...</span>}
+              </label>
+
+              {!loadingSubs && (
+                <SubtareasEditor
+                  subtasks={subtasks}
+                  nuevoSub={nuevoSub} setNuevoSub={setNuevoSub}
+                  nuevoSubFecha={nuevoSubFecha} setNuevoSubFecha={setNuevoSubFecha}
+                  nuevoSubHoras={nuevoSubHoras} setNuevoSubHoras={setNuevoSubHoras}
+                  errorSub={errorSub} setErrorSub={setErrorSub}
+                  editandoSubId={editandoSubId}
+                  editandoSubTitulo={editandoSubTitulo} setEditandoSubTitulo={setEditandoSubTitulo}
+                  editandoSubFecha={editandoSubFecha} setEditandoSubFecha={setEditandoSubFecha}
+                  editandoSubHoras={editandoSubHoras} setEditandoSubHoras={setEditandoSubHoras}
+                  onAgregar={agregarSubtask}
+                  onEliminar={eliminarSubtask}
+                  onIniciarEdicion={iniciarEdicionSub}
+                  onGuardarEdicion={guardarEdicionSub}
+                  onCancelarEdicion={() => setEditandoSubId(null)}
+                />
+              )}
             </div>
 
             <div className="ca-botones">
@@ -411,7 +623,6 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                 {loading ? <IconSpinner /> : 'Guardar cambios'}
               </button>
             </div>
-
           </div>
         )}
       </div>

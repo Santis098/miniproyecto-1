@@ -26,17 +26,26 @@ const IconSpinner = () => (
   </svg>
 );
 
+// Lee metadatos locales (fecha/horas) guardados por EditActivity
+const getSubtaskMeta = (actividadId, subtaskId) => {
+  try {
+    const meta = JSON.parse(localStorage.getItem(`subtask_meta_${actividadId}`) || '{}');
+    return meta[subtaskId] || { fecha: '', horas: 0 };
+  } catch { return { fecha: '', horas: 0 }; }
+};
+
 function ActivityDetail({ actividad, onClose, onActualizado }) {
   const [editandoAsignatura, setEditandoAsignatura] = useState(false);
   const [asignaturaInput, setAsignaturaInput]       = useState('');
   const [asignaturaMostrada, setAsignaturaMostrada] = useState(null);
   const [asignaturaCargada, setAsignaturaCargada]   = useState(false);
 
-  // Todos los hooks primero, sin excepcion
   const [subtasks, setSubtasks]               = useState([]);
   const [loading, setLoading]                 = useState(true);
   const [mostrarInput, setMostrarInput]       = useState(false);
   const [nuevoTitulo, setNuevoTitulo]         = useState("");
+  const [nuevoFecha, setNuevoFecha]           = useState("");
+  const [nuevoHoras, setNuevoHoras]           = useState("");
   const [errorNuevo, setErrorNuevo]           = useState("");
   const [editandoId, setEditandoId]           = useState(null);
   const [editandoTitulo, setEditandoTitulo]   = useState("");
@@ -52,7 +61,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
 
   const token = localStorage.getItem("token");
 
-  // Sincronizar horas cuando cambia la actividad
   useEffect(() => {
     if (actividad) {
       setHorasTrabajadas(actividad.horas_trabajadas || 0);
@@ -79,7 +87,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     if (actividad) cargarSubtasks();
   }, [actividad]);
 
-  // Guard — despues de todos los hooks
   if (!actividad) return null;
 
   const formatFecha = (f) => {
@@ -96,7 +103,14 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       .then(res => res.json())
       .then(json => {
         const lista = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-        setSubtasks(lista.filter(st => st.activity === actividad.id));
+        // Enriquecer con metadatos locales (fecha/horas guardados en EditActivity)
+        const enriquecidas = lista
+          .filter(st => st.activity === actividad.id)
+          .map(st => {
+            const meta = getSubtaskMeta(actividad.id, st.id);
+            return { ...st, fechaMeta: meta.fecha, horasMeta: meta.horas };
+          });
+        setSubtasks(enriquecidas);
         setLoading(false);
       })
       .catch(err => { console.error(err); setLoading(false); });
@@ -137,8 +151,14 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     return { completadas, total: subtasks.length };
   };
 
+  // Calcula horas estimadas totales de subtareas (suma de metadatos locales)
+  const getTotalHorasSubtareas = () => {
+    return subtasks.reduce((acc, st) => acc + (st.horasMeta || 0), 0);
+  };
+
   const progreso = getProgreso();
   const progrSub = getProgresoSubtareas();
+  const totalHorasSubs = getTotalHorasSubtareas();
 
   const guardarHoras = async () => {
     const val = parseFloat(horasInput);
@@ -192,17 +212,35 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   };
 
   const crearSubtask = async () => {
-    if (!nuevoTitulo.trim()) { setErrorNuevo("Debe ingresar un titulo."); return; }
+    if (!nuevoTitulo.trim())  { setErrorNuevo("Debe ingresar un título."); return; }
     if (nuevoTitulo.trim().length < 3) { setErrorNuevo("Mínimo 3 caracteres."); return; }
+    if (!nuevoFecha)          { setErrorNuevo("Selecciona una fecha."); return; }
+    if (!nuevoHoras || parseFloat(nuevoHoras) <= 0) { setErrorNuevo("Las horas deben ser mayores a 0."); return; }
     setErrorNuevo("");
     try {
       const res = await fetch(`${API_BASE}/api/subtasks/`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: nuevoTitulo, activity: actividad.id })
+        body: JSON.stringify({ title: nuevoTitulo.trim(), activity: actividad.id })
       });
-      if (res.status === 201) { setNuevoTitulo(""); setMostrarInput(false); cargarSubtasks(); }
-      else { const e = await res.json(); setErrorNuevo(e?.data?.title?.[0] || "Error al crear."); }
+      if (res.status === 201) {
+        const data = await res.json();
+        const newId = data?.data?.id || data?.id;
+        // Guardar fecha y horas en localStorage
+        if (newId) {
+          try {
+            const meta = JSON.parse(localStorage.getItem(`subtask_meta_${actividad.id}`) || '{}');
+            meta[newId] = { fecha: nuevoFecha, horas: parseFloat(nuevoHoras) };
+            localStorage.setItem(`subtask_meta_${actividad.id}`, JSON.stringify(meta));
+          } catch {}
+        }
+        setNuevoTitulo(""); setNuevoFecha(""); setNuevoHoras("");
+        setMostrarInput(false);
+        cargarSubtasks();
+      } else {
+        const e = await res.json();
+        setErrorNuevo(e?.data?.title?.[0] || "Error al crear.");
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -226,6 +264,12 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       await fetch(`${API_BASE}/api/subtasks/${confirmarEliminar.id}/`, {
         method: "DELETE", headers: { Authorization: `Bearer ${token}` }
       });
+      // Limpiar metadatos locales de esta subtarea
+      try {
+        const meta = JSON.parse(localStorage.getItem(`subtask_meta_${actividad.id}`) || '{}');
+        delete meta[confirmarEliminar.id];
+        localStorage.setItem(`subtask_meta_${actividad.id}`, JSON.stringify(meta));
+      } catch {}
       setConfirmarEliminar(null); cargarSubtasks();
     } catch (err) { console.error(err); }
     setLoadingEliminar(null);
@@ -324,6 +368,17 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             <div className="detail-progreso-bar-bg">
               <div className="detail-progreso-bar-fill" style={{ width: `${progreso}%` }} />
             </div>
+            {/* Detalle de progreso de subtareas */}
+            {subtasks.length > 0 && (
+              <div className="detail-progreso-subs">
+                <span>
+                  Subtareas: {progrSub.completadas}/{progrSub.total} completadas
+                </span>
+                {totalHorasSubs > 0 && (
+                  <span>· {totalHorasSubs}h estimadas en subtareas</span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="detail-tiempo-grid">
@@ -347,7 +402,9 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                   <div className="detail-tiempo-valor-row">
                     <span className="detail-tiempo-valor">{horasTrabajadas}h</span>
                     <button className="horas-editar-btn"
-                      onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }}><IconEdit /></button>
+                      onClick={() => { setHorasInput(String(horasTrabajadas)); setEditandoHoras(true); }}>
+                      <IconEdit />
+                    </button>
                   </div>
                 )}
               </div>
@@ -360,8 +417,11 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
             </div>
           </div>
 
+          {/* ── SECCIÓN SUBTAREAS ── */}
           <div className="detail-subtareas-header">
-            <span className="detail-subtareas-titulo">Tareas ({progrSub.completadas}/{progrSub.total})</span>
+            <span className="detail-subtareas-titulo">
+              Tareas ({progrSub.completadas}/{progrSub.total})
+            </span>
             {!mostrarInput && (
               <button className="btn-agregar-sub" onClick={() => setMostrarInput(true)}>+ Agregar</button>
             )}
@@ -372,52 +432,101 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
           ) : subtasks.length === 0 ? (
             <p className="detail-empty-sub">No hay subtareas aún.</p>
           ) : (
-            <ul className="detail-list">
-              {subtasks.map(st => (
-                <li key={st.id} className={`detail-item ${st.is_completed ? "done" : ""}`}>
-                  <input type="checkbox" className="detail-checkbox"
-                    checked={st.is_completed}
-                    onChange={() => toggleSubtask(st)}
-                    disabled={loadingToggle === st.id}
-                    style={{opacity: loadingToggle === st.id ? 0.4 : 1}}
-                  />
-                  {editandoId === st.id ? (
-                    <div className="edit-col">
-                      <div className="edit-row">
-                        <input className="edit-input" value={editandoTitulo}
-                          onChange={e => { setEditandoTitulo(e.target.value); setErrorEdicion(""); }}
-                          onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
-                          autoFocus />
-                        <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)} disabled={loadingEditar === st.id}>
-                          {loadingEditar === st.id ? <IconSpinner /> : "Guardar"}
-                        </button>
-                        <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
+            <>
+              {/* Cabecera de columnas de subtareas */}
+              <div className="detail-subtask-cols-header">
+                <span></span>{/* checkbox */}
+                <span>Título</span>
+                <span>Fecha</span>
+                <span>Horas</span>
+                <span></span>{/* acciones */}
+              </div>
+              <ul className="detail-list">
+                {subtasks.map(st => (
+                  <li key={st.id} className={`detail-item ${st.is_completed ? "done" : ""}`}>
+                    <input type="checkbox" className="detail-checkbox"
+                      checked={st.is_completed}
+                      onChange={() => toggleSubtask(st)}
+                      disabled={loadingToggle === st.id}
+                      style={{opacity: loadingToggle === st.id ? 0.4 : 1}}
+                    />
+                    {editandoId === st.id ? (
+                      <div className="edit-col" style={{flex:1}}>
+                        <div className="edit-row">
+                          <input className="edit-input" value={editandoTitulo}
+                            onChange={e => { setEditandoTitulo(e.target.value); setErrorEdicion(""); }}
+                            onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
+                            autoFocus />
+                          <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)} disabled={loadingEditar === st.id}>
+                            {loadingEditar === st.id ? <IconSpinner /> : "Guardar"}
+                          </button>
+                          <button className="btn-cancelar-edit" onClick={cancelarEdicion}>Cancelar</button>
+                        </div>
+                        {errorEdicion && <p className="st-error-msg">{errorEdicion}</p>}
                       </div>
-                      {errorEdicion && <p className="st-error-msg">{errorEdicion}</p>}
-                    </div>
-                  ) : (
-                    <span className={`st-titulo-texto ${st.is_completed ? "tachado" : ""}`}>{st.title}</span>
-                  )}
-                  {editandoId !== st.id && (
-                    <div className="st-acciones">
-                      <button className="btn-icon-sub" onClick={() => iniciarEdicion(st)}><IconEdit /></button>
-                      <button className="btn-icon-sub btn-icon-del" onClick={() => setConfirmarEliminar(st)}><IconTrash /></button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+                    ) : (
+                      <>
+                        <span className={`st-titulo-texto ${st.is_completed ? "tachado" : ""}`} style={{flex:1}}>
+                          {st.title}
+                        </span>
+                        {/* Fecha de la subtarea (desde metadatos locales) */}
+                        <span className="st-meta-col">
+                          {st.fechaMeta
+                            ? <span className="st-meta-badge">📅 {formatFecha(st.fechaMeta)}</span>
+                            : <span className="st-meta-vacio">—</span>
+                          }
+                        </span>
+                        {/* Horas de la subtarea (desde metadatos locales) */}
+                        <span className="st-meta-col">
+                          {st.horasMeta > 0
+                            ? <span className="st-meta-badge">⏱ {st.horasMeta}h</span>
+                            : <span className="st-meta-vacio">—</span>
+                          }
+                        </span>
+                      </>
+                    )}
+                    {editandoId !== st.id && (
+                      <div className="st-acciones">
+                        <button className="btn-icon-sub" onClick={() => iniciarEdicion(st)}><IconEdit /></button>
+                        <button className="btn-icon-sub btn-icon-del" onClick={() => setConfirmarEliminar(st)}><IconTrash /></button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           {mostrarInput && (
             <div className="subtask-add-col">
-              <div className="subtask-input">
-                <input type="text" placeholder="Ej: estudiar derivadas" value={nuevoTitulo}
+              <div className="subtask-add-grid">
+                <input
+                  className="subtask-add-input"
+                  type="text"
+                  placeholder="Título subtarea"
+                  value={nuevoTitulo}
                   onChange={e => { setNuevoTitulo(e.target.value); setErrorNuevo(""); }}
-                  onKeyDown={e => { if (e.key === "Enter") crearSubtask(); }}
-                  autoFocus />
+                  onKeyDown={e => { if (e.key === "Escape") { setMostrarInput(false); setNuevoTitulo(""); setNuevoFecha(""); setNuevoHoras(""); setErrorNuevo(""); } }}
+                  autoFocus
+                />
+                <input
+                  className="subtask-add-input"
+                  type="date"
+                  value={nuevoFecha}
+                  onChange={e => { setNuevoFecha(e.target.value); setErrorNuevo(""); }}
+                />
+                <input
+                  className="subtask-add-input"
+                  type="number"
+                  min="0.5" step="0.5"
+                  placeholder="Horas"
+                  value={nuevoHoras}
+                  onChange={e => { setNuevoHoras(e.target.value); setErrorNuevo(""); }}
+                />
+              </div>
+              <div className="subtask-add-btns">
                 <button className="btn-guardar-sub" onClick={crearSubtask}>Guardar</button>
-                <button className="btn-cancelar-sub" onClick={() => { setMostrarInput(false); setNuevoTitulo(""); setErrorNuevo(""); }}>Cancelar</button>
+                <button className="btn-cancelar-sub" onClick={() => { setMostrarInput(false); setNuevoTitulo(""); setNuevoFecha(""); setNuevoHoras(""); setErrorNuevo(""); }}>Cancelar</button>
               </div>
               {errorNuevo && <p className="st-error-msg">{errorNuevo}</p>}
             </div>
