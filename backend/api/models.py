@@ -11,9 +11,11 @@ class Usuario(AbstractUser):
 
     rol = models.CharField(max_length=20, choices=ROLES, default='USER')
     activo = models.BooleanField(default=True)
+    nombre = models.CharField(max_length=100, blank=True, default='')
+    apellido = models.CharField(max_length=100, blank=True, default='')
 
     def __str__(self):
-        return self.username
+        return f"{self.nombre} {self.apellido}".strip() or self.email
 
 
 class Asignatura(models.Model):
@@ -69,6 +71,8 @@ class Activity(models.Model):
 class Subtask(models.Model):
     title = models.CharField(max_length=255)
     is_completed = models.BooleanField(default=False)
+    fecha = models.DateField(null=True, blank=True)
+    horas_estimadas = models.FloatField(default=0, null=True, blank=True)
 
     activity = models.ForeignKey(
         Activity,
