@@ -53,6 +53,22 @@ function CreateActivity({ onClose, onActivityCreated }) {
     if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
     if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha para la subtarea.'); return; }
     if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
+
+    // Validar que la fecha de la subtarea no supere la fecha de la actividad
+    if (fecha && nuevoSubFecha > fecha) {
+      setErrorSub(`La fecha de la subtarea no puede ser mayor a la fecha de la actividad (${fecha}).`);
+      return;
+    }
+
+    // Validar que la suma de horas no supere las horas estimadas de la actividad
+    const horasActuales = subtasks.reduce((acc, s) => acc + s.horas, 0);
+    const horasMax = parseFloat(horasEstimadas) || 0;
+    if (horasMax > 0 && horasActuales + parseFloat(nuevoSubHoras) > horasMax) {
+      const horasDisponibles = horasMax - horasActuales;
+      setErrorSub(`No puedes agregar más horas. Disponibles: ${horasDisponibles}h de ${horasMax}h estimadas.`);
+      return;
+    }
+
     setSubtasks([...subtasks, {
       titulo: nuevoSub.trim(),
       fecha: nuevoSubFecha,
@@ -73,10 +89,27 @@ function CreateActivity({ onClose, onActivityCreated }) {
 
   const guardarEdicionSub = (id) => {
     if (!editandoSubTitulo.trim() || !editandoSubFecha || !editandoSubHoras) return;
+
+    // Validar fecha
+    if (fecha && editandoSubFecha > fecha) {
+      setErrorSub(`La fecha no puede ser mayor a la fecha de la actividad (${fecha}).`);
+      return;
+    }
+
+    // Validar horas (excluir la subtarea que se está editando de la suma)
+    const horasOtras = subtasks.filter(s => s.id !== id).reduce((acc, s) => acc + s.horas, 0);
+    const horasMax = parseFloat(horasEstimadas) || 0;
+    if (horasMax > 0 && horasOtras + parseFloat(editandoSubHoras) > horasMax) {
+      const horasDisponibles = horasMax - horasOtras;
+      setErrorSub(`Horas excedidas. Disponibles: ${horasDisponibles}h de ${horasMax}h estimadas.`);
+      return;
+    }
+
     setSubtasks(subtasks.map(s => s.id === id
       ? { ...s, titulo: editandoSubTitulo.trim(), fecha: editandoSubFecha, horas: parseFloat(editandoSubHoras) }
       : s
     ));
+    setErrorSub('');
     setEditandoSubId(null); setEditandoSubTitulo(''); setEditandoSubFecha(''); setEditandoSubHoras('');
   };
 
@@ -429,6 +462,21 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
     if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha.'); return; }
     if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
 
+    // Validar fecha vs fecha de la actividad
+    if (fecha && nuevoSubFecha > fecha) {
+      setErrorSub(`La fecha no puede ser mayor a la fecha de la actividad (${fecha}).`);
+      return;
+    }
+
+    // Validar suma de horas
+    const horasActuales = subtasks.reduce((acc, s) => acc + (s.horas || 0), 0);
+    const horasMax = parseFloat(horasEstimadas) || 0;
+    if (horasMax > 0 && horasActuales + parseFloat(nuevoSubHoras) > horasMax) {
+      const horasDisponibles = +(horasMax - horasActuales).toFixed(1);
+      setErrorSub(`No puedes agregar más horas. Disponibles: ${horasDisponibles}h de ${horasMax}h estimadas.`);
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/subtasks/`, {
         method: 'POST',
@@ -438,7 +486,6 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
       if (res.status === 201) {
         const data = await res.json();
         const newId = data?.data?.id || data?.id;
-        // Guardar metadatos localmente
         if (newId) {
           const meta = getLocalMeta();
           meta[newId] = { fecha: nuevoSubFecha, horas: parseFloat(nuevoSubHoras) };
@@ -477,19 +524,35 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
 
   const guardarEdicionSub = async (id) => {
     if (!editandoSubTitulo.trim()) return;
+
+    // Validar fecha vs fecha de la actividad
+    if (fecha && editandoSubFecha > fecha) {
+      setErrorSub(`La fecha no puede ser mayor a la fecha de la actividad (${fecha}).`);
+      return;
+    }
+
+    // Validar suma de horas (excluir la subtarea editada)
+    const horasOtras = subtasks.filter(s => s.id !== id).reduce((acc, s) => acc + (s.horas || 0), 0);
+    const horasMax = parseFloat(horasEstimadas) || 0;
+    if (horasMax > 0 && editandoSubHoras && horasOtras + parseFloat(editandoSubHoras) > horasMax) {
+      const horasDisponibles = +(horasMax - horasOtras).toFixed(1);
+      setErrorSub(`Horas excedidas. Disponibles: ${horasDisponibles}h de ${horasMax}h estimadas.`);
+      return;
+    }
+
     try {
       await fetch(`${API_BASE}/api/subtasks/${id}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ title: editandoSubTitulo.trim() })
       });
-      // Guardar fecha y horas localmente
       const meta = getLocalMeta();
       meta[id] = {
         fecha: editandoSubFecha,
         horas: parseFloat(editandoSubHoras) || 0
       };
       saveLocalMeta(meta);
+      setErrorSub('');
       setEditandoSubId(null); setEditandoSubTitulo('');
       setEditandoSubFecha(''); setEditandoSubHoras('');
       cargarSubtasks();

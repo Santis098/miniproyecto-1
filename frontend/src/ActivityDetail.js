@@ -49,6 +49,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const [errorNuevo, setErrorNuevo]           = useState("");
   const [editandoId, setEditandoId]           = useState(null);
   const [editandoTitulo, setEditandoTitulo]   = useState("");
+  const [editandoFecha, setEditandoFecha]     = useState("");
+  const [editandoHorasSub, setEditandoHorasSub] = useState("");
   const [errorEdicion, setErrorEdicion]       = useState("");
   const [confirmarEliminar, setConfirmarEliminar] = useState(null);
   const [horasTrabajadas, setHorasTrabajadas] = useState(0);
@@ -216,6 +218,22 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     if (nuevoTitulo.trim().length < 3) { setErrorNuevo("Mínimo 3 caracteres."); return; }
     if (!nuevoFecha)          { setErrorNuevo("Selecciona una fecha."); return; }
     if (!nuevoHoras || parseFloat(nuevoHoras) <= 0) { setErrorNuevo("Las horas deben ser mayores a 0."); return; }
+
+    // Validar fecha vs fecha de entrega de la actividad
+    if (actividad.due_date && nuevoFecha > actividad.due_date) {
+      setErrorNuevo(`La fecha no puede ser mayor a la fecha de entrega (${actividad.due_date}).`);
+      return;
+    }
+
+    // Validar suma de horas vs horas estimadas de la actividad
+    const horasActuales = subtasks.reduce((acc, s) => acc + (s.horasMeta || 0), 0);
+    const horasMax = actividad.horas_estimadas || 0;
+    if (horasMax > 0 && horasActuales + parseFloat(nuevoHoras) > horasMax) {
+      const horasDisponibles = +(horasMax - horasActuales).toFixed(1);
+      setErrorNuevo(`No puedes agregar más horas. Disponibles: ${horasDisponibles}h de ${horasMax}h estimadas.`);
+      return;
+    }
+
     setErrorNuevo("");
     try {
       const res = await fetch(`${API_BASE}/api/subtasks/`, {
@@ -226,7 +244,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
       if (res.status === 201) {
         const data = await res.json();
         const newId = data?.data?.id || data?.id;
-        // Guardar fecha y horas en localStorage
         if (newId) {
           try {
             const meta = JSON.parse(localStorage.getItem(`subtask_meta_${actividad.id}`) || '{}');
@@ -275,12 +292,42 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     setLoadingEliminar(null);
   };
 
-  const iniciarEdicion = (st) => { setEditandoId(st.id); setEditandoTitulo(st.title); setErrorEdicion(""); };
-  const cancelarEdicion = () => { setEditandoId(null); setEditandoTitulo(""); setErrorEdicion(""); };
+  const iniciarEdicion = (st) => {
+    setEditandoId(st.id);
+    setEditandoTitulo(st.title);
+    setEditandoFecha(st.fechaMeta || "");
+    setEditandoHorasSub(String(st.horasMeta || ""));
+    setErrorEdicion("");
+  };
+  const cancelarEdicion = () => {
+    setEditandoId(null);
+    setEditandoTitulo("");
+    setEditandoFecha("");
+    setEditandoHorasSub("");
+    setErrorEdicion("");
+  };
 
   const guardarEdicion = async (id) => {
     if (!editandoTitulo.trim()) { setErrorEdicion("Debe ingresar un titulo."); return; }
     if (editandoTitulo.trim().length < 3) { setErrorEdicion("Mínimo 3 caracteres."); return; }
+    if (!editandoFecha) { setErrorEdicion("Selecciona una fecha."); return; }
+    if (!editandoHorasSub || parseFloat(editandoHorasSub) <= 0) { setErrorEdicion("Las horas deben ser mayores a 0."); return; }
+
+    // Validar fecha vs fecha de entrega
+    if (actividad.due_date && editandoFecha > actividad.due_date) {
+      setErrorEdicion(`La fecha no puede ser mayor a la fecha de entrega (${actividad.due_date}).`);
+      return;
+    }
+
+    // Validar suma de horas (excluir la subtarea que se edita)
+    const horasOtras = subtasks.filter(s => s.id !== id).reduce((acc, s) => acc + (s.horasMeta || 0), 0);
+    const horasMax = actividad.horas_estimadas || 0;
+    if (horasMax > 0 && horasOtras + parseFloat(editandoHorasSub) > horasMax) {
+      const horasDisponibles = +(horasMax - horasOtras).toFixed(1);
+      setErrorEdicion(`Horas excedidas. Disponibles: ${horasDisponibles}h de ${horasMax}h estimadas.`);
+      return;
+    }
+
     setErrorEdicion(""); setLoadingEditar(id);
     try {
       await fetch(`${API_BASE}/api/subtasks/${id}/`, {
@@ -288,7 +335,13 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ title: editandoTitulo })
       });
-      setEditandoId(null); setEditandoTitulo(""); cargarSubtasks();
+      try {
+        const meta = JSON.parse(localStorage.getItem(`subtask_meta_${actividad.id}`) || '{}');
+        meta[id] = { fecha: editandoFecha, horas: parseFloat(editandoHorasSub) };
+        localStorage.setItem(`subtask_meta_${actividad.id}`, JSON.stringify(meta));
+      } catch {}
+      setEditandoId(null); setEditandoTitulo(""); setEditandoFecha(""); setEditandoHorasSub("");
+      cargarSubtasks();
     } catch (err) { console.error(err); }
     setLoadingEditar(null);
   };
@@ -452,11 +505,20 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                     />
                     {editandoId === st.id ? (
                       <div className="edit-col" style={{flex:1}}>
-                        <div className="edit-row">
-                          <input className="edit-input" value={editandoTitulo}
+                        <div className="edit-row-3">
+                          <input className="edit-input" placeholder="Título"
+                            value={editandoTitulo}
                             onChange={e => { setEditandoTitulo(e.target.value); setErrorEdicion(""); }}
-                            onKeyDown={e => { if (e.key === "Enter") guardarEdicion(st.id); if (e.key === "Escape") cancelarEdicion(); }}
+                            onKeyDown={e => { if (e.key === "Escape") cancelarEdicion(); }}
                             autoFocus />
+                          <input className="edit-input-sm" type="date"
+                            value={editandoFecha}
+                            onChange={e => { setEditandoFecha(e.target.value); setErrorEdicion(""); }}
+                          />
+                          <input className="edit-input-sm" type="number" min="0.5" step="0.5" placeholder="Horas"
+                            value={editandoHorasSub}
+                            onChange={e => { setEditandoHorasSub(e.target.value); setErrorEdicion(""); }}
+                          />
                           <button className="btn-guardar-edit" onClick={() => guardarEdicion(st.id)} disabled={loadingEditar === st.id}>
                             {loadingEditar === st.id ? <IconSpinner /> : "Guardar"}
                           </button>

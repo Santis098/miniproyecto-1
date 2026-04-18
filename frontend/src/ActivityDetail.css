@@ -224,11 +224,22 @@
 
 /* ── Edición inline de subtarea ── */
 .edit-col { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-.edit-row { display: flex; gap: 6px; align-items: center; }
+
+.edit-row-3 {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+}
+
 .edit-input {
-  flex: 1; padding: 6px 10px;
+  flex: 1; min-width: 120px; padding: 6px 10px;
   border: 1.5px solid #2563eb; border-radius: 8px;
   font-size: 14px; outline: none;
+}
+
+.edit-input-sm {
+  width: 120px; padding: 6px 10px;
+  border: 1.5px solid #2563eb; border-radius: 8px;
+  font-size: 13px; outline: none;
+  box-sizing: border-box;
 }
 .btn-guardar-edit {
   background: #2563eb; color: white;
