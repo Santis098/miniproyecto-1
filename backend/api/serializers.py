@@ -97,6 +97,28 @@ class SubtaskSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate(self, attrs):
+        activity = attrs.get('activity')
+        fecha = attrs.get('fecha')
+        horas_estimadas = attrs.get('horas_estimadas')
+
+        if activity:
+            # Validar que la fecha de la subtarea no sea mayor a la de la actividad
+            if fecha is not None and activity.due_date is not None:
+                if fecha > activity.due_date:
+                    raise serializers.ValidationError({
+                        "fecha": f"La fecha de la subtarea no puede ser mayor a la fecha de entrega de la actividad ({activity.due_date})."
+                    })
+
+            # Validar que las horas de la subtarea no sean mayores a las de la actividad
+            if horas_estimadas is not None and activity.horas_estimadas is not None:
+                if float(horas_estimadas) > float(activity.horas_estimadas):
+                    raise serializers.ValidationError({
+                        "horas_estimadas": f"Las horas estimadas de la subtarea ({horas_estimadas}h) no pueden ser mayores a las de la actividad ({activity.horas_estimadas}h)."
+                    })
+
+        return attrs
+
 
 # ==============================
 # ACTIVIDADES
