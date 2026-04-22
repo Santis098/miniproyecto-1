@@ -16,8 +16,8 @@ const IconSpinner = () => (
 const generarUsername = (nombreCompleto) => {
   const base = nombreCompleto
     .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar tildes
-    .replace(/[^a-z0-9]/g, '')                        // solo alfanumérico
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
     .substring(0, 12);
   const sufijo = Math.floor(1000 + Math.random() * 9000);
   return `${base}_${sufijo}`;
@@ -66,6 +66,13 @@ const Registrar = () => {
       return;
     }
 
+    // ✅ FIX: Mínimo 3 caracteres en nombre (no más restricciones de apellido)
+    if (nombreCompleto.trim().length < 3) {
+      setErrorMessage('El nombre debe tener al menos 3 caracteres.');
+      setErrorFields(['nombreCompleto']);
+      return;
+    }
+
     if (password !== password2) {
       setErrorMessage('Las contraseñas no coinciden.');
       setErrorFields(['password', 'password2']);
@@ -82,19 +89,19 @@ const Registrar = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-          username,
-          nombre: nombreCompleto.trim().split(' ')[0],
-          apellido: nombreCompleto.trim().split(' ').slice(1).join(' ') || nombreCompleto.trim().split(' ')[0],
-          email: email.trim(),
-          password,
-          password2
-        })
+            username,
+            nombre: nombreCompleto.trim().split(' ')[0],
+            apellido: nombreCompleto.trim().split(' ').slice(1).join(' ') || nombreCompleto.trim().split(' ')[0],
+            email: email.trim(),
+            password,
+            password2
+          })
         });
         const data = await response.json();
 
         if (response.ok && data.status === 'success') {
           setIsSuccess(true);
-          setLoading(false);
+          // ✅ FIX: No mostrar botón "Ir a iniciar sesión", simplemente redirigir con spinner
           setTimeout(() => navigate('/login'), 2000);
           return;
         }
@@ -103,10 +110,8 @@ const Registrar = () => {
         const firstKey = Object.keys(errData)[0];
         const firstMsg = Array.isArray(errData[firstKey]) ? errData[firstKey][0] : errData[firstKey];
 
-        // Si el único problema es username duplicado, reintentamos con otro sufijo
         if (firstKey === 'username') continue;
 
-        // Cualquier otro error lo mostramos al usuario
         setErrorMessage(traducirError(firstKey, firstMsg));
         if (firstKey === 'email') setErrorFields(['email']);
         else if (firstKey === 'password' || firstKey === 'password2') setErrorFields(['password', 'password2']);
@@ -136,71 +141,73 @@ const Registrar = () => {
         <h2>Registrarse</h2>
         <p className="subtitle">Completa el formulario con tus datos</p>
 
-        {isSuccess && <div className="success-alert">✅ El registro fue exitoso</div>}
+        {/* ✅ FIX: En éxito solo mostramos mensaje + spinner, sin botón */}
+        {isSuccess && (
+          <div className="success-alert">
+            ✅ Registro exitoso. Redirigiendo a inicio de sesión&nbsp;
+            <IconSpinner />
+          </div>
+        )}
         {!isSuccess && errorMessage && (
           <div className="error-alert"><span className="error-icon">⚠️</span> {errorMessage}</div>
         )}
 
-        <form onSubmit={handleRegister}>
+        {/* ✅ FIX: Ocultamos el form completo al registrar para no mostrar el botón */}
+        {!isSuccess && (
+          <form onSubmit={handleRegister}>
+            <div className="input-group">
+              <label>Nombre completo</label>
+              <input
+                type="text"
+                placeholder="Ej: Juan Pérez"
+                value={nombreCompleto}
+                onChange={e => { setNombreCompleto(e.target.value); setErrorFields(f => f.filter(x => x !== 'nombreCompleto')); }}
+                className={errorFields.includes('nombreCompleto') ? 'input-error' : ''}
+                disabled={loading}
+              />
+            </div>
 
-          <div className="input-group">
-            <label>Nombre completo</label>
-            <input
-              type="text"
-              placeholder="Ej: Juan Pérez"
-              value={nombreCompleto}
-              onChange={e => { setNombreCompleto(e.target.value); setErrorFields(f => f.filter(x => x !== 'nombreCompleto')); }}
-              className={errorFields.includes('nombreCompleto') ? 'input-error' : ''}
-              disabled={isSuccess || loading}
-            />
-          </div>
+            <div className="input-group">
+              <label>Correo electrónico</label>
+              <input
+                type="email"
+                placeholder="juanperez@gmail.com"
+                value={email}
+                onChange={e => { setEmail(e.target.value); setErrorFields(f => f.filter(x => x !== 'email')); }}
+                className={errorFields.includes('email') ? 'input-error' : ''}
+                disabled={loading}
+              />
+            </div>
 
-          <div className="input-group">
-            <label>Correo electrónico</label>
-            <input
-              type="email"
-              placeholder="juanperez@gmail.com"
-              value={email}
-              onChange={e => { setEmail(e.target.value); setErrorFields(f => f.filter(x => x !== 'email')); }}
-              className={errorFields.includes('email') ? 'input-error' : ''}
-              disabled={isSuccess || loading}
-            />
-          </div>
+            <div className="input-group">
+              <label>Contraseña</label>
+              <input
+                type="password"
+                placeholder="Mínimo 8 caracteres"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setErrorFields(f => f.filter(x => x !== 'password' && x !== 'password2')); }}
+                className={errorFields.includes('password') ? 'input-error' : ''}
+                disabled={loading}
+              />
+            </div>
 
-          <div className="input-group">
-            <label>Contraseña</label>
-            <input
-              type="password"
-              placeholder="Mínimo 8 caracteres"
-              value={password}
-              onChange={e => { setPassword(e.target.value); setErrorFields(f => f.filter(x => x !== 'password' && x !== 'password2')); }}
-              className={errorFields.includes('password') ? 'input-error' : ''}
-              disabled={isSuccess || loading}
-            />
-          </div>
+            <div className="input-group">
+              <label>Confirmar contraseña</label>
+              <input
+                type="password"
+                placeholder="Repite tu contraseña"
+                value={password2}
+                onChange={e => { setPassword2(e.target.value); setErrorFields(f => f.filter(x => x !== 'password' && x !== 'password2')); }}
+                className={errorFields.includes('password2') ? 'input-error' : ''}
+                disabled={loading}
+              />
+            </div>
 
-          <div className="input-group">
-            <label>Confirmar contraseña</label>
-            <input
-              type="password"
-              placeholder="Repite tu contraseña"
-              value={password2}
-              onChange={e => { setPassword2(e.target.value); setErrorFields(f => f.filter(x => x !== 'password' && x !== 'password2')); }}
-              className={errorFields.includes('password2') ? 'input-error' : ''}
-              disabled={isSuccess || loading}
-            />
-          </div>
-
-          {isSuccess ? (
-            <button type="button" className="success-button" onClick={() => navigate('/login')}>
-              Ir a Iniciar Sesión →
-            </button>
-          ) : (
             <button type="submit" className="primary-button" disabled={loading}>
               {loading ? <IconSpinner /> : 'Registrarme'}
             </button>
-          )}
-        </form>
+          </form>
+        )}
       </div>
     </div>
   );

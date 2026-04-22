@@ -25,6 +25,24 @@ const IconSpinner = () => (
     <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/>
   </svg>
 );
+
+// ✅ FIX: Ícono SVG estándar de "salir / logout"
+const IconLogout = () => (
+  <svg style={{width:16,height:16,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+    <polyline points="16 17 21 12 16 7"/>
+    <line x1="21" y1="12" x2="9" y2="12"/>
+  </svg>
+);
+
+// ✅ FIX: Ícono SVG de usuario
+const IconUser = () => (
+  <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+    <circle cx="12" cy="7" r="4"/>
+  </svg>
+);
+
 const FILTROS = ['Dificultad', 'Horas estimadas', 'Fecha', 'Progreso'];
 const FILTROS_SIN_FECHA = ['Dificultad', 'Horas estimadas', 'Progreso'];
 
@@ -62,8 +80,9 @@ const Dashboard = () => {
   const token = localStorage.getItem('token');
 
   useEffect(() => {
-    const nombre = localStorage.getItem('username');
-    setUserName(nombre || 'Usuario');
+    // ✅ FIX: Leer 'nombre' del localStorage (guardado en login) con fallback a 'username'
+    const nombre = localStorage.getItem('nombre') || localStorage.getItem('username') || 'Usuario';
+    setUserName(nombre);
     cargarTareas();
     cargarAsignaturas();
   }, []);
@@ -140,13 +159,8 @@ const Dashboard = () => {
     setLoading(false);
   };
 
-  const cambiarFiltroHoy = (f) => {
-    setFiltroHoy(f); setDropdownHoy(false);
-  };
-
-  const cambiarFiltroProximas = (f) => {
-    setFiltroProximas(f); setDropdownProximas(false);
-  };
+  const cambiarFiltroHoy = (f) => { setFiltroHoy(f); setDropdownHoy(false); };
+  const cambiarFiltroProximas = (f) => { setFiltroProximas(f); setDropdownProximas(false); };
 
   const eliminarActividad = async (actividad) => {
     setEliminando(true);
@@ -166,6 +180,7 @@ const Dashboard = () => {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
+    localStorage.removeItem('nombre');
     navigate('/login');
   };
 
@@ -310,7 +325,6 @@ const Dashboard = () => {
   }).length;
   const estaSemanaTotal = (tareasData?.hoy?.length || 0) + proximasSemana;
 
-  // VERIFICACIÓN GLOBAL SI NO HAY NINGUNA ACTIVIDAD
   const isCompletelyEmpty = tareasData &&
     (tareasData.vencidas?.length || 0) === 0 &&
     (tareasData.hoy?.length || 0) === 0 &&
@@ -324,9 +338,13 @@ const Dashboard = () => {
           <span role="img" aria-label="calendar">📅</span> Gestión de Actividades
         </div>
         <div className="user-actions">
-          <span>👤 {userName}</span>
-          <button className="logout-btn" onClick={handleLogout}>
-            <span>🚪</span> Salir
+          {/* ✅ FIX: Ícono SVG de usuario + nombre real del localStorage */}
+          <span style={{display:'flex', alignItems:'center', gap:6}}>
+            <IconUser /> {userName}
+          </span>
+          {/* ✅ FIX: Ícono SVG estándar de logout (flecha saliendo) */}
+          <button className="logout-btn" onClick={handleLogout} style={{display:'flex', alignItems:'center', gap:6}}>
+            <IconLogout /> Salir
           </button>
         </div>
       </header>
@@ -354,7 +372,6 @@ const Dashboard = () => {
             <p>Cargando actividades...</p>
           </div>
         ) : isCompletelyEmpty ? (
-          // ESTADO TOTALMENTE VACÍO
           <div className="global-empty-state">
             <div className="success-icon" style={{fontSize: '4rem'}}>✅</div>
             <h2 style={{ color: '#172b4d', margin: '15px 0' }}>No tienes actividades registradas</h2>
@@ -385,9 +402,8 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* CONTENEDOR EN FORMA DE CUADRÍCULA PARA LAS 3 COLUMNAS */}
             <div className="sections-grid">
-              
+
               {/* === ATRASADAS === */}
               <div className="section-card">
                 <div className="section-header-area">
@@ -399,7 +415,6 @@ const Dashboard = () => {
                   {!tareasData?.vencidas?.length ? (
                     <div className="empty-state">
                       <div className="success-icon">✅</div>
-                      {/* Aquí se eliminó el "Muy bien sigue así" */}
                       <p>No tienes actividades atrasadas</p>
                     </div>
                   ) : (
@@ -420,10 +435,10 @@ const Dashboard = () => {
                   <div className="filtros-container" style={{display: 'flex', gap: 10}}>
                     <AsignaturaDropdown seccion="hoy" />
                     <FiltroDropdown
-                        filtro={filtroHoy} dropdown={dropdownHoy}
-                        setDropdown={setDropdownHoy} onChange={cambiarFiltroHoy}
-                        refEl={refHoy} sinFecha={true}
-                      />
+                      filtro={filtroHoy} dropdown={dropdownHoy}
+                      setDropdown={setDropdownHoy} onChange={cambiarFiltroHoy}
+                      refEl={refHoy} sinFecha={true}
+                    />
                   </div>
                 </div>
                 <div className="section-body">
@@ -500,7 +515,6 @@ const Dashboard = () => {
         />
       )}
 
-      {/* MODAL CONFIRMAR ELIMINAR */}
       {confirmarEliminar && (
         <div className="confirm-overlay-dash">
           <div className="confirm-modal-dash">
@@ -517,7 +531,6 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* MENSAJE ÉXITO */}
       {exitoMsg && (
         <div className="exito-toast">✅ {exitoMsg}</div>
       )}

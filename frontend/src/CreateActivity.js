@@ -3,6 +3,44 @@ import './CreateActivity.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
 
+// ─── Fecha de hoy en formato YYYY-MM-DD (sin hora, zona local) ───
+const hoy = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const formatFecha = (f) => {
+  if (!f) return '';
+  const [y, m, d] = f.split('-');
+  return `${d}/${m}/${y}`;
+};
+
+// ─── Límite diario de horas ───────────────────────────────────
+const LIMITE_HORAS_DIA = 6;
+
+/**
+ * Consulta la API y devuelve las horas ya ocupadas para una fecha dada.
+ * excluirId: id de la actividad que se está editando (para no contarse a sí misma)
+ */
+const consultarHorasOcupadas = async (fecha, token, excluirId = null) => {
+  try {
+    const res = await fetch(`${API_BASE}/api/activities/`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const json = await res.json();
+    const lista = Array.isArray(json?.data) ? json.data : [];
+    return lista
+      .filter(a => a.due_date === fecha && a.id !== excluirId)
+      .reduce((sum, a) => sum + (parseFloat(a.horas_estimadas) || 0), 0);
+  } catch {
+    return 0; // Si falla la consulta, no bloqueamos
+  }
+};
+
+// ─── Iconos ───────────────────────────────────────────────────
 const IconTrash = () => (
   <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"/>
@@ -48,16 +86,23 @@ function CreateActivity({ onClose, onActivityCreated }) {
   const [error, setError]               = useState('');
   const [success, setSuccess]           = useState(false);
 
+  const TODAY = hoy();
+
   const agregarSubtask = () => {
     if (!nuevoSub.trim())   { setErrorSub('Ingresa el título de la subtarea.'); return; }
     if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
     if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha para la subtarea.'); return; }
+
+    // ✅ FIX: No permitir fecha pasada
+    if (nuevoSubFecha < TODAY) {
+      setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
     if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
 
     // Validar que la fecha de la subtarea no supere la fecha de la actividad
     if (fecha && nuevoSubFecha > fecha) {
-      const [y, m, d] = fecha.split('-');
-      setErrorSub(`La fecha de la subtarea no puede ser posterior a la fecha de la actividad (${d}/${m}/${y}).`);
+      setErrorSub(`La fecha de la subtarea no puede ser posterior a la fecha de la actividad (${formatFecha(fecha)}).`);
       return;
     }
     setSubtasks([...subtasks, { titulo: nuevoSub.trim(), fecha: nuevoSubFecha, horas: parseFloat(nuevoSubHoras), id: Date.now() }]);
@@ -67,14 +112,31 @@ function CreateActivity({ onClose, onActivityCreated }) {
   const eliminarSubtask = (id) => setSubtasks(subtasks.filter(s => s.id !== id));
 
   const iniciarEdicionSub = (st) => {
-    setEditandoSubId(st.id); setEditandoSubTitulo(st.titulo);
-    setEditandoSubFecha(st.fecha); setEditandoSubHoras(st.horas);
+    setEditandoSubId(st.id);
+    setEditandoSubTitulo(st.titulo);
+    setEditandoSubFecha(st.fecha);
+    setEditandoSubHoras(st.horas);
   };
 
   const guardarEdicionSub = (id) => {
     if (!editandoSubTitulo.trim() || !editandoSubFecha || !editandoSubHoras) return;
-    setSubtasks(subtasks.map(s => s.id === id ? { ...s, titulo: editandoSubTitulo.trim(), fecha: editandoSubFecha, horas: parseFloat(editandoSubHoras) } : s));
+
+    // ✅ FIX: No permitir fecha pasada en edición de subtarea
+    if (editandoSubFecha < TODAY) {
+      setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
+    if (fecha && editandoSubFecha > fecha) {
+      setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFecha(fecha)}).`);
+      return;
+    }
+
+    setSubtasks(subtasks.map(s => s.id === id
+      ? { ...s, titulo: editandoSubTitulo.trim(), fecha: editandoSubFecha, horas: parseFloat(editandoSubHoras) }
+      : s
+    ));
     setEditandoSubId(null); setEditandoSubTitulo(''); setEditandoSubFecha(''); setEditandoSubHoras('');
+    setErrorSub('');
   };
 
   const resolverAsignatura = async (nombre, token) => {
@@ -102,10 +164,30 @@ function CreateActivity({ onClose, onActivityCreated }) {
     if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
     if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
     if (!fecha)                   { setError('Selecciona una fecha de actividad.'); return; }
+
+    // ✅ FIX: No permitir fecha de actividad pasada
+    if (fecha < TODAY) {
+      setError(`La fecha de la actividad no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
     if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
 
-    setError(''); setLoading(true);
+    // ✅ VALIDACIÓN 6H: Consultar horas ya ocupadas en esa fecha
     const token = localStorage.getItem('token');
+    const horasOcupadas = await consultarHorasOcupadas(fecha, token);
+    const horasNuevas   = parseFloat(horasEstimadas);
+    const horasDisponibles = LIMITE_HORAS_DIA - horasOcupadas;
+
+    if (horasOcupadas + horasNuevas > LIMITE_HORAS_DIA) {
+      setError(
+        `El día ${formatFecha(fecha)} ya tiene ${horasOcupadas}h agendadas de un máximo de ${LIMITE_HORAS_DIA}h. ` +
+        `Solo quedan ${horasDisponibles > 0 ? horasDisponibles + 'h disponibles' : '0h disponibles'}. ` +
+        `Elige otra fecha o reduce las horas estimadas.`
+      );
+      return;
+    }
+
+    setError(''); setLoading(true);
     const asignaturaId = await resolverAsignatura(asignatura, token);
 
     try {
@@ -166,7 +248,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
             </div>
             <div className="ca-campo">
               <label className="ca-label">Descripción</label>
-              <textarea className="ca-textarea" placeholder="Describe la actividad o notas importante..." value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
+              <textarea className="ca-textarea" placeholder="Describe la actividad o notas importantes..." value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={2} />
             </div>
             <div className="ca-campo">
               <label className="ca-label">Asignatura</label>
@@ -201,7 +283,8 @@ function CreateActivity({ onClose, onActivityCreated }) {
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Fecha de actividad *</label>
-                <input className="ca-input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+                {/* ✅ FIX: min=TODAY bloquea fechas pasadas en el calendario */}
+                <input className="ca-input" type="date" min={TODAY} value={fecha} onChange={e => setFecha(e.target.value)} />
               </div>
               <div className="ca-campo">
                 <label className="ca-label">Horas estimadas *</label>
@@ -211,9 +294,10 @@ function CreateActivity({ onClose, onActivityCreated }) {
               </div>
             </div>
 
-            {/* SUBTAREAS */}
             <SubtareasEditor
               subtasks={subtasks}
+              fechaActividad={fecha}
+              today={TODAY}
               nuevoSub={nuevoSub} setNuevoSub={setNuevoSub}
               nuevoSubFecha={nuevoSubFecha} setNuevoSubFecha={setNuevoSubFecha}
               nuevoSubHoras={nuevoSubHoras} setNuevoSubHoras={setNuevoSubHoras}
@@ -226,7 +310,7 @@ function CreateActivity({ onClose, onActivityCreated }) {
               onEliminar={eliminarSubtask}
               onIniciarEdicion={iniciarEdicionSub}
               onGuardarEdicion={guardarEdicionSub}
-              onCancelarEdicion={() => setEditandoSubId(null)}
+              onCancelarEdicion={() => { setEditandoSubId(null); setErrorSub(''); }}
             />
 
             <div className="ca-botones">
@@ -249,6 +333,8 @@ export default CreateActivity;
 // ─────────────────────────────────────────────────────────────
 function SubtareasEditor({
   subtasks,
+  fechaActividad,
+  today,
   nuevoSub, setNuevoSub,
   nuevoSubFecha, setNuevoSubFecha,
   nuevoSubHoras, setNuevoSubHoras,
@@ -259,21 +345,20 @@ function SubtareasEditor({
   editandoSubHoras, setEditandoSubHoras,
   onAgregar, onEliminar, onIniciarEdicion, onGuardarEdicion, onCancelarEdicion
 }) {
+  // El máximo seleccionable en el calendario es la fecha de la actividad (si existe)
+  const maxFecha = fechaActividad || undefined;
+
   return (
     <div className="ca-campo">
       <label className="ca-label">Subtareas <span style={{color:'#aaa', fontWeight:400}}>(opcional)</span></label>
 
-      {/* Cabecera de columnas */}
-      {(subtasks.length > 0 || true) && (
-        <div className="ca-subtask-cols-header">
-          <span>Título</span>
-          <span>Fecha límite</span>
-          <span>Horas</span>
-          <span></span>
-        </div>
-      )}
+      <div className="ca-subtask-cols-header">
+        <span>Título</span>
+        <span>Fecha límite</span>
+        <span>Horas</span>
+        <span></span>
+      </div>
 
-      {/* Lista de subtareas existentes */}
       {subtasks.length > 0 && (
         <ul className="ca-subtasks-lista">
           {subtasks.map(st => (
@@ -283,7 +368,9 @@ function SubtareasEditor({
                   <div className="ca-subtask-edit-grid">
                     <input className="ca-input" type="text" placeholder="Título"
                       value={editandoSubTitulo} onChange={e => setEditandoSubTitulo(e.target.value)} autoFocus />
+                    {/* ✅ FIX: min y max en el calendario de edición */}
                     <input className="ca-input" type="date"
+                      min={today} max={maxFecha}
                       value={editandoSubFecha} onChange={e => setEditandoSubFecha(e.target.value)} />
                     <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="h"
                       value={editandoSubHoras} onChange={e => setEditandoSubHoras(e.target.value)} />
@@ -295,10 +382,10 @@ function SubtareasEditor({
                 </>
               ) : (
                 <>
-                  <div className="ca-subtask-edit-grid" style={{opacity:1}}>
+                  <div className="ca-subtask-edit-grid">
                     <span className="ca-subtask-texto">{st.titulo}</span>
-                    <span className="ca-subtask-meta">📅 {st.fecha}</span>
-                    <span className="ca-subtask-meta">⏱ {st.horas}h</span>
+                    <span className="ca-subtask-meta">{st.fecha ? `📅 ${formatFecha(st.fecha)}` : '—'}</span>
+                    <span className="ca-subtask-meta">{st.horas ? `⏱ ${st.horas}h` : '—'}</span>
                   </div>
                   <div className="ca-subtask-acciones">
                     <button className="ca-sub-btn ca-sub-btn-edit" type="button" onClick={() => onIniciarEdicion(st)}><IconEdit /></button>
@@ -311,14 +398,15 @@ function SubtareasEditor({
         </ul>
       )}
 
-      {/* Fila para agregar nueva subtarea */}
       <div className="ca-subtask-input-grid">
         <input className="ca-input" type="text" placeholder="Título subtarea"
           value={nuevoSub}
           onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAgregar(); } }}
         />
+        {/* ✅ FIX: min y max en el calendario de nueva subtarea */}
         <input className="ca-input" type="date"
+          min={today} max={maxFecha}
           value={nuevoSubFecha}
           onChange={e => { setNuevoSubFecha(e.target.value); setErrorSub(''); }}
         />
@@ -348,25 +436,22 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
   const [error, setError]               = useState('');
   const [success, setSuccess]           = useState(false);
 
-  // Subtareas del servidor
   const [subtasks, setSubtasks]         = useState([]);
   const [loadingSubs, setLoadingSubs]   = useState(true);
 
-  // Estados para nueva subtarea
   const [nuevoSub, setNuevoSub]         = useState('');
   const [nuevoSubFecha, setNuevoSubFecha] = useState('');
   const [nuevoSubHoras, setNuevoSubHoras] = useState('');
   const [errorSub, setErrorSub]         = useState('');
 
-  // Estados para editar subtarea
   const [editandoSubId, setEditandoSubId] = useState(null);
   const [editandoSubTitulo, setEditandoSubTitulo] = useState('');
   const [editandoSubFecha, setEditandoSubFecha]   = useState('');
   const [editandoSubHoras, setEditandoSubHoras]   = useState('');
 
   const token = localStorage.getItem('token');
+  const TODAY = hoy();
 
-  // Cargar subtareas existentes de la actividad
   useEffect(() => {
     cargarSubtasks();
   }, []);
@@ -379,10 +464,18 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
       });
       const json = await res.json();
       const lista = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-      // Convertir formato servidor a formato local
-      setSubtasks(lista
-        .filter(st => st.activity === actividad.id)
-        .map(st => ({ id: st.id, titulo: st.title, fecha: '', horas: 0, esServidor: true }))
+
+      // ✅ FIX: Campos confirmados del servidor: "fecha" y "horas_estimadas"
+      setSubtasks(
+        lista
+          .filter(st => st.activity === actividad.id)
+          .map(st => ({
+            id: st.id,
+            titulo: st.title || '',
+            fecha: st.fecha || '',          // ← campo real del servidor
+            horas: st.horas_estimadas || 0, // ← campo real del servidor
+            esServidor: true,
+          }))
       );
     } catch (err) { console.error(err); }
     setLoadingSubs(false);
@@ -392,11 +485,16 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
     if (!nuevoSub.trim())   { setErrorSub('Ingresa el título de la subtarea.'); return; }
     if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
     if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha.'); return; }
+
+    // ✅ FIX: No permitir fecha pasada
+    if (nuevoSubFecha < TODAY) {
+      setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
     if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
 
-    // Validar que la fecha de la subtarea no supere la fecha de la actividad
     if (fecha && nuevoSubFecha > fecha) {
-      setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFechaLocal(fecha)}).`);
+      setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFecha(fecha)}).`);
       return;
     }
 
@@ -404,7 +502,12 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
       const res = await fetch(`${API_BASE}/api/subtasks/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: nuevoSub.trim(), activity: actividad.id })
+        body: JSON.stringify({
+          title: nuevoSub.trim(),
+          activity: actividad.id,
+          fecha: nuevoSubFecha,                       // ← campo real del servidor
+          horas_estimadas: parseFloat(nuevoSubHoras),
+        })
       });
       if (res.status === 201) {
         setNuevoSub(''); setNuevoSubFecha(''); setNuevoSubHoras(''); setErrorSub('');
@@ -423,16 +526,25 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
   };
 
   const iniciarEdicionSub = (st) => {
-    setEditandoSubId(st.id); setEditandoSubTitulo(st.titulo);
-    setEditandoSubFecha(st.fecha || ''); setEditandoSubHoras(st.horas || '');
+    setEditandoSubId(st.id);
+    setEditandoSubTitulo(st.titulo);
+    setEditandoSubFecha(st.fecha || '');
+    setEditandoSubHoras(String(st.horas || ''));
+    setErrorSub('');
   };
 
   const guardarEdicionSub = async (id) => {
-    if (!editandoSubTitulo.trim()) return;
+    if (!editandoSubTitulo.trim()) { setErrorSub('El título no puede estar vacío.'); return; }
 
-    // Validar que la fecha editada no supere la fecha de la actividad
+    // ✅ FIX: Validar fecha pasada en edición
+    if (editandoSubFecha && editandoSubFecha < TODAY) {
+      setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
+
+    // ✅ FIX: Validar que la subtarea no supere la fecha de la actividad
     if (fecha && editandoSubFecha && editandoSubFecha > fecha) {
-      setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFechaLocal(fecha)}).`);
+      setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFecha(fecha)}).`);
       return;
     }
 
@@ -440,18 +552,19 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
       await fetch(`${API_BASE}/api/subtasks/${id}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: editandoSubTitulo.trim() })
+        body: JSON.stringify({
+          title: editandoSubTitulo.trim(),
+          fecha: editandoSubFecha || undefined,        // ← campo real del servidor
+          horas_estimadas: editandoSubHoras ? parseFloat(editandoSubHoras) : undefined,
+        })
       });
-      setEditandoSubId(null); setEditandoSubTitulo('');
+      setEditandoSubId(null);
+      setEditandoSubTitulo('');
+      setEditandoSubFecha('');
+      setEditandoSubHoras('');
+      setErrorSub('');
       cargarSubtasks();
     } catch (err) { console.error(err); }
-  };
-
-  // Formatea fecha YYYY-MM-DD a DD/MM/YYYY para mensajes
-  const formatFechaLocal = (f) => {
-    if (!f) return '';
-    const [y, m, d] = f.split('-');
-    return `${d}/${m}/${y}`;
   };
 
   const manejarEnvio = async () => {
@@ -461,15 +574,35 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
     if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
     if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
     if (!fecha)                   { setError('Selecciona una fecha.'); return; }
+
+    // ✅ FIX: No permitir fecha de actividad pasada
+    if (fecha < TODAY) {
+      setError(`La fecha de la actividad no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
     if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
 
-    // Verificar si alguna subtarea tiene fecha posterior a la nueva fecha de la actividad
+    // ✅ VALIDACIÓN 6H: Consultar horas ya ocupadas en esa fecha (excluyendo la actividad actual)
+    const horasOcupadas    = await consultarHorasOcupadas(fecha, token, actividad.id);
+    const horasNuevas      = parseFloat(horasEstimadas);
+    const horasDisponibles = LIMITE_HORAS_DIA - horasOcupadas;
+
+    if (horasOcupadas + horasNuevas > LIMITE_HORAS_DIA) {
+      setError(
+        `El día ${formatFecha(fecha)} ya tiene ${horasOcupadas}h agendadas de un máximo de ${LIMITE_HORAS_DIA}h. ` +
+        `Solo quedan ${horasDisponibles > 0 ? horasDisponibles + 'h disponibles' : '0h disponibles'}. ` +
+        `Elige otra fecha o reduce las horas estimadas.`
+      );
+      return;
+    }
+
+    // ✅ FIX: Verificar subtareas con fecha posterior a la nueva fecha de actividad
     const subsConFechaInvalida = subtasks.filter(st => st.fecha && st.fecha > fecha);
     if (subsConFechaInvalida.length > 0) {
       const nombres = subsConFechaInvalida.map(st => `"${st.titulo}"`).join(', ');
       setError(
-        `⚠️ Las siguientes subtareas tienen fecha posterior al ${formatFechaLocal(fecha)}: ${nombres}. ` +
-        `Debes reprogramarlas antes de guardar.`
+        `Las siguientes subtareas tienen fecha posterior al ${formatFecha(fecha)}: ${nombres}. ` +
+        `Edítalas primero para poder guardar.`
       );
       return;
     }
@@ -550,7 +683,8 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Fecha de actividad *</label>
-                <input className="ca-input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+                {/* ✅ FIX: min=TODAY bloquea fechas pasadas */}
+                <input className="ca-input" type="date" min={TODAY} value={fecha} onChange={e => setFecha(e.target.value)} />
               </div>
               <div className="ca-campo">
                 <label className="ca-label">Horas estimadas *</label>
@@ -567,7 +701,6 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
 
               {!loadingSubs && (
                 <>
-                  {/* Cabecera columnas */}
                   <div className="ca-subtask-cols-header">
                     <span>Título</span>
                     <span>Fecha límite</span>
@@ -575,43 +708,70 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                     <span></span>
                   </div>
 
-                  {/* Lista subtareas */}
                   {subtasks.length > 0 && (
                     <ul className="ca-subtasks-lista">
-                      {subtasks.map(st => (
-                        <li key={st.id} className="ca-subtask-item">
-                          {editandoSubId === st.id ? (
-                            <>
-                              <div className="ca-subtask-edit-grid">
-                                <input className="ca-input" type="text" placeholder="Título"
-                                  value={editandoSubTitulo} onChange={e => setEditandoSubTitulo(e.target.value)} autoFocus />
-                                <input className="ca-input" type="date"
-                                  value={editandoSubFecha} onChange={e => setEditandoSubFecha(e.target.value)} />
-                                <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="h"
-                                  value={editandoSubHoras} onChange={e => setEditandoSubHoras(e.target.value)} />
-                              </div>
-                              <div className="ca-subtask-acciones">
-                                <button className="ca-sub-btn ca-sub-btn-ok" type="button" onClick={() => guardarEdicionSub(st.id)}>✓</button>
-                                <button className="ca-sub-btn ca-sub-btn-cancel" type="button" onClick={() => setEditandoSubId(null)}>✕</button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="ca-subtask-edit-grid">
-                                <span className="ca-subtask-texto">{st.titulo}</span>
-                                <span className="ca-subtask-meta">{st.fecha ? `📅 ${st.fecha}` : '—'}</span>
-                                <span className="ca-subtask-meta">{st.horas ? `⏱ ${st.horas}h` : '—'}</span>
-                              </div>
-                              <div className="ca-subtask-acciones">
-                                <button className="ca-sub-btn ca-sub-btn-edit" type="button" onClick={() => iniciarEdicionSub(st)}><IconEdit /></button>
-                                <button className="ca-sub-btn ca-sub-btn-del" type="button" onClick={() => eliminarSubtask(st.id)}><IconTrash /></button>
-                              </div>
-                            </>
-                          )}
-                        </li>
-                      ))}
+                      {subtasks.map(st => {
+                        // ✅ FIX: Marcar subtareas cuya fecha es inválida respecto a la nueva fecha de actividad
+                        const fechaInvalida = st.fecha && fecha && st.fecha > fecha;
+                        return (
+                          <li key={st.id} className={`ca-subtask-item${fechaInvalida ? ' ca-subtask-fecha-invalida' : ''}`}>
+                            {editandoSubId === st.id ? (
+                              <>
+                                <div className="ca-subtask-edit-grid">
+                                  <input className="ca-input" type="text" placeholder="Título"
+                                    value={editandoSubTitulo} onChange={e => setEditandoSubTitulo(e.target.value)} autoFocus />
+                                  {/* ✅ FIX: min y max en edición */}
+                                  <input className="ca-input" type="date"
+                                    min={TODAY} max={fecha || undefined}
+                                    value={editandoSubFecha} onChange={e => setEditandoSubFecha(e.target.value)} />
+                                  <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="h"
+                                    value={editandoSubHoras} onChange={e => setEditandoSubHoras(e.target.value)} />
+                                </div>
+                                <div className="ca-subtask-acciones">
+                                  <button className="ca-sub-btn ca-sub-btn-ok" type="button" onClick={() => guardarEdicionSub(st.id)}>✓</button>
+                                  <button className="ca-sub-btn ca-sub-btn-cancel" type="button" onClick={() => { setEditandoSubId(null); setErrorSub(''); }}>✕</button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="ca-subtask-edit-grid">
+                                  <span className="ca-subtask-texto">
+                                    {st.titulo}
+                                    {/* ✅ FIX: Indicador visual de fecha conflictiva */}
+                                    {fechaInvalida && (
+                                      <span style={{
+                                        marginLeft: 8,
+                                        fontSize: 11,
+                                        color: '#c0392b',
+                                        fontWeight: 600,
+                                        background: '#fdecea',
+                                        borderRadius: 4,
+                                        padding: '1px 6px',
+                                      }}>
+                                        ⚠ Reprogramar
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="ca-subtask-meta" style={fechaInvalida ? {color:'#c0392b', fontWeight:600} : {}}>
+                                    {st.fecha ? `📅 ${formatFecha(st.fecha)}` : '—'}
+                                  </span>
+                                  <span className="ca-subtask-meta">
+                                    {st.horas ? `⏱ ${st.horas}h` : '—'}
+                                  </span>
+                                </div>
+                                <div className="ca-subtask-acciones">
+                                  <button className="ca-sub-btn ca-sub-btn-edit" type="button" onClick={() => iniciarEdicionSub(st)}><IconEdit /></button>
+                                  <button className="ca-sub-btn ca-sub-btn-del" type="button" onClick={() => eliminarSubtask(st.id)}><IconTrash /></button>
+                                </div>
+                              </>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
+
+                  {errorSub && <p className="ca-sub-error">{errorSub}</p>}
 
                   {/* Agregar nueva subtarea */}
                   <div className="ca-subtask-input-grid">
@@ -619,7 +779,9 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                       value={nuevoSub} onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregarSubtask(); } }}
                     />
+                    {/* ✅ FIX: min y max en nueva subtarea */}
                     <input className="ca-input" type="date"
+                      min={TODAY} max={fecha || undefined}
                       value={nuevoSubFecha} onChange={e => { setNuevoSubFecha(e.target.value); setErrorSub(''); }}
                     />
                     <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="Horas"
@@ -628,7 +790,6 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                     />
                     <button className="ca-subtask-add-btn" type="button" onClick={agregarSubtask}>+ Agregar</button>
                   </div>
-                  {errorSub && <p className="ca-sub-error">{errorSub}</p>}
                 </>
               )}
             </div>

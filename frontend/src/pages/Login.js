@@ -45,6 +45,15 @@ const Login = () => {
       if (response.ok && data.status === 'success') {
         localStorage.setItem('token', data.data.access);
         localStorage.setItem('username', data.data.username);
+
+        // ✅ FIX: Guardar nombre completo para mostrarlo en el Dashboard
+        // Intentamos nombre + apellido, si no existe usamos username
+        const nombreCompleto = [data.data.nombre, data.data.apellido]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        localStorage.setItem('nombre', nombreCompleto || data.data.username || '');
+
         navigate('/hoy');
       } else {
         setErrorMessage(data.message || 'Usuario y/o contraseña incorrecta');
