@@ -237,6 +237,59 @@ class SubtaskRetrieveUpdateDestroyAPIView(BaseView, generics.RetrieveUpdateDestr
 
 
 # ==============================
+# REPROGRAMAR ACTIVIDAD
+# ==============================
+
+class ReprogramarActividadView(BaseView, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        # Verificar que la actividad existe y pertenece al usuario
+        try:
+            actividad = Activity.objects.get(pk=pk, usuario=request.user)
+        except Activity.DoesNotExist:
+            return self.error(
+                "Actividad no encontrada o no tienes permiso para modificarla.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        nueva_fecha = request.data.get('due_date')
+
+        # Validar que se envio la fecha
+        if not nueva_fecha:
+            return self.error("El campo due_date es requerido.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        # Validar formato de fecha
+        from datetime import date
+        try:
+            from datetime import datetime
+            fecha_parsed = datetime.strptime(nueva_fecha, '%Y-%m-%d').date()
+        except ValueError:
+            return self.error(
+                "Formato de fecha incorrecto. Use el formato YYYY-MM-DD.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validar que no sea fecha pasada
+        if fecha_parsed < timezone.localdate():
+            return self.error(
+                "La fecha no puede ser anterior a la fecha actual.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Actualizar la fecha y updated_at
+        actividad.due_date = fecha_parsed
+        actividad.save()
+
+        return self.success({
+            "id": actividad.id,
+            "title": actividad.title,
+            "due_date": str(actividad.due_date),
+            "updated_at": str(actividad.updated_at),
+        }, "Actividad reprogramada correctamente.")
+
+
+# ==============================
 # TAREAS DE HOY
 # ==============================
 

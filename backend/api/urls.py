@@ -3,7 +3,7 @@ from .views import (
     AsignaturaListCreateAPIView, AsignaturaRetrieveUpdateDestroyAPIView,
     ActivityListCreateAPIView, ActivityRetrieveUpdateDestroyAPIView,
     SubtaskListCreateAPIView, SubtaskRetrieveUpdateDestroyAPIView,
-    RegisterView, LoginView, TareasHoyView
+    RegisterView, LoginView, TareasHoyView, ReprogramarActividadView
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -18,6 +18,7 @@ urlpatterns = [
     # Actividades
     path('activities/', ActivityListCreateAPIView.as_view(), name='activity-list-create'),
     path('activities/<int:pk>/', ActivityRetrieveUpdateDestroyAPIView.as_view(), name='activity-detail'),
+    path('activities/<int:pk>/reprogramar/', ReprogramarActividadView.as_view(), name='activity-reprogramar'),
 
     # Subtareas
     path('subtasks/', SubtaskListCreateAPIView.as_view(), name='subtask-list-create'),
