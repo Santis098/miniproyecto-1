@@ -31,6 +31,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # ← primero
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -139,3 +140,5 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+
+STATIC_ROOT = BASE_DIR / 'staticfiles'
