@@ -344,3 +344,147 @@ class TareasHoyView(BaseView, APIView):
             "hoy": TareaHoySerializer(hoy_tareas, many=True).data,
             "proximas": TareaHoySerializer(proximas, many=True).data,
         }, "Tareas obtenidas correctamente.")
+
+# ==============================
+# LIMITE HORAS DIARIAS
+# ==============================
+
+class LimiteHorasDiariasView(BaseView, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Devolver el limite actual del usuario (default 6)
+        limite = getattr(request.user, 'limite_horas_diarias', 6)
+        return self.success({
+            "limite_horas_diarias": limite
+        }, "Limite de horas diarias obtenido correctamente.")
+
+    def put(self, request):
+        limite = request.data.get('limite_horas_diarias')
+        if limite is None:
+            return self.error("El campo limite_horas_diarias es requerido.")
+        try:
+            limite = float(limite)
+            if limite <= 0 or limite > 24:
+                return self.error("El limite debe ser entre 1 y 24 horas.")
+        except (ValueError, TypeError):
+            return self.error("El limite debe ser un numero valido.")
+
+        request.user.limite_horas_diarias = limite
+        request.user.save()
+        return self.success({
+            "limite_horas_diarias": limite
+        }, "Limite de horas diarias actualizado correctamente.")
+
+
+# ==============================
+# VALIDACION LIMITE Y SUGERENCIA
+# ==============================
+
+class ValidarLimiteHorasView(BaseView, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_limite(self, user):
+        return getattr(user, 'limite_horas_diarias', 6)
+
+    def _horas_usadas_en_dia(self, user, fecha, excluir_subtarea_id=None):
+        from django.db.models import Sum
+        # Horas de actividades en ese dia
+        horas_actividades = Activity.objects.filter(
+            usuario=user,
+            due_date=fecha
+        ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
+
+        # Horas de subtareas en ese dia
+        subtareas = Subtask.objects.filter(
+            activity__usuario=user,
+            fecha=fecha
+        )
+        if excluir_subtarea_id:
+            subtareas = subtareas.exclude(id=excluir_subtarea_id)
+        horas_subtareas = subtareas.aggregate(total=Sum('horas_estimadas'))['total'] or 0
+
+        return horas_actividades + horas_subtareas
+
+    def _buscar_dia_disponible(self, user, desde_fecha, horas_necesarias):
+        from datetime import timedelta
+        limite = self._get_limite(user)
+        fecha = desde_fecha
+        # Buscar en los proximos 30 dias
+        for _ in range(30):
+            fecha = fecha + timedelta(days=1)
+            # Saltar fines de semana
+            if fecha.weekday() >= 5:
+                continue
+            horas_usadas = self._horas_usadas_en_dia(user, fecha)
+            if (limite - horas_usadas) >= horas_necesarias:
+                return fecha
+        return None
+
+    def post(self, request):
+        from datetime import timedelta
+        from django.db.models import Sum
+
+        tipo = request.data.get('tipo')  # 'actividad' o 'subtarea'
+        fecha = request.data.get('fecha')
+        horas = request.data.get('horas_estimadas', 0)
+
+        if not fecha or not tipo:
+            return self.error("Los campos tipo y fecha son requeridos.")
+
+        try:
+            from datetime import datetime
+            fecha_parsed = datetime.strptime(fecha, '%Y-%m-%d').date()
+            horas = float(horas)
+        except (ValueError, TypeError):
+            return self.error("Formato de fecha o horas incorrecto.")
+
+        limite = self._get_limite(request.user)
+        horas_usadas = self._horas_usadas_en_dia(request.user, fecha_parsed)
+        horas_disponibles = limite - horas_usadas
+
+        # Si no excede el limite, permitir
+        if horas_usadas + horas <= limite:
+            return self.success({
+                "permite": True,
+                "horas_usadas": horas_usadas,
+                "horas_disponibles": horas_disponibles,
+                "limite": limite
+            }, "Dentro del limite de horas diarias.")
+
+        # Excede el limite — calcular sugerencia
+        # Buscar subtarea del dia con actividad de entrega mas lejana
+        subtareas_del_dia = Subtask.objects.filter(
+            activity__usuario=request.user,
+            fecha=fecha_parsed
+        ).select_related('activity').order_by('-activity__due_date')
+
+        tarea_a_mover = None
+        if subtareas_del_dia.exists():
+            tarea_a_mover = subtareas_del_dia.first()
+
+        # Buscar dia disponible
+        dia_sugerido = self._buscar_dia_disponible(request.user, fecha_parsed, horas)
+
+        sugerencia = None
+        if tarea_a_mover and dia_sugerido:
+            sugerencia = {
+                "task_to_move_id": tarea_a_mover.id,
+                "task_to_move_title": tarea_a_mover.title,
+                "suggested_date": str(dia_sugerido),
+                "mensaje": f"Te sugerimos mover '{tarea_a_mover.title}' al {dia_sugerido.strftime('%d/%m/%Y')} que tiene capacidad disponible."
+            }
+        elif dia_sugerido:
+            sugerencia = {
+                "suggested_date": str(dia_sugerido),
+                "mensaje": f"Te sugerimos programar esta tarea para el {dia_sugerido.strftime('%d/%m/%Y')}."
+            }
+
+        return Response({
+            "status": "limit_exceeded",
+            "message": f"Supera el limite de {limite}h diarias. Horas usadas: {horas_usadas}h, disponibles: {horas_disponibles}h.",
+            "horas_usadas": horas_usadas,
+            "horas_disponibles": horas_disponibles,
+            "limite": limite,
+            "suggestion": sugerencia
+        }, status=422)

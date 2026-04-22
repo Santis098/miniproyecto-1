@@ -8,6 +8,11 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AddField(
+            model_name='usuario',
+            name='limite_horas_diarias',
+            field=models.FloatField(default=6),
+        ),
+        migrations.AddField(
             model_name='activity',
             name='updated_at',
             field=models.DateTimeField(auto_now=True),

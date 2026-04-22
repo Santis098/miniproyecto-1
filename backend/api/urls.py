@@ -3,7 +3,8 @@ from .views import (
     AsignaturaListCreateAPIView, AsignaturaRetrieveUpdateDestroyAPIView,
     ActivityListCreateAPIView, ActivityRetrieveUpdateDestroyAPIView,
     SubtaskListCreateAPIView, SubtaskRetrieveUpdateDestroyAPIView,
-    RegisterView, LoginView, TareasHoyView, ReprogramarActividadView
+    RegisterView, LoginView, TareasHoyView, ReprogramarActividadView,
+    LimiteHorasDiariasView, ValidarLimiteHorasView
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -24,6 +25,10 @@ urlpatterns = [
     path('subtasks/', SubtaskListCreateAPIView.as_view(), name='subtask-list-create'),
     path('subtasks/<int:pk>/', SubtaskRetrieveUpdateDestroyAPIView.as_view(), name='subtask-detail'),
     path('tasks/hoy/', TareasHoyView.as_view(), name='tasks-hoy'),
+
+    # Limite horas y validacion
+    path('usuario/limite-horas/', LimiteHorasDiariasView.as_view(), name='limite-horas'),
+    path('validar/limite-horas/', ValidarLimiteHorasView.as_view(), name='validar-limite-horas'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
