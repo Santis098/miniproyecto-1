@@ -5,6 +5,7 @@ from .views import (
     SubtaskListCreateAPIView, SubtaskRetrieveUpdateDestroyAPIView,
     RegisterView, LoginView, TareasHoyView  # ← agregar TareasHoyView
 )
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerUIView
 
 urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='register'),
@@ -22,4 +23,6 @@ urlpatterns = [
     path('subtasks/', SubtaskListCreateAPIView.as_view(), name='subtask-list-create'),
     path('subtasks/<int:pk>/', SubtaskRetrieveUpdateDestroyAPIView.as_view(), name='subtask-detail'),
     path('tasks/hoy/', TareasHoyView.as_view(), name='tasks-hoy'),
+    path('schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('docs/', SpectacularSwaggerUIView.as_view(url_name='schema'), name='swagger-ui'),
 ]
