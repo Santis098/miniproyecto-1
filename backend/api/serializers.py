@@ -15,7 +15,12 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ('nombre', 'apellido', 'email', 'password', 'password2')
+        # DEBES incluir 'username' aunque sea opcional en el JSON de entrada, 
+        # o Django se quejará al validar el modelo.
+        fields = ('nombre', 'apellido', 'email', 'password', 'password2', 'username')
+        extra_kwargs = {
+            'username': {'required': False} # Lo hacemos opcional porque lo generamos abajo
+        }
 
     def validate_nombre(self, value):
         if not value or not value.strip():
