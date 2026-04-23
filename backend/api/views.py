@@ -488,3 +488,123 @@ class ValidarLimiteHorasView(BaseView, APIView):
             "limite": limite,
             "suggestion": sugerencia
         }, status=422)
+
+# ==============================
+# SPRINT 2 — PATCH PARCIAL DE SUBTAREA
+# PATCH /subtasks/{id}/patch/
+#
+# Permite actualizar solo fecha, solo horas_estimadas, solo is_completed,
+# o cualquier combinacion de ellos sin enviar el objeto completo.
+#
+# Re-validaciones que hace este endpoint (no confia en el Front):
+#   1. Si cambian las horas: total_horas_del_dia + nuevas_horas <= limite_diario
+#   2. Si cambia la fecha:  total_horas_del_nuevo_dia + horas_tarea <= limite_diario
+#   3. Concurrencia: usa select_for_update() dentro de una transaccion atomica
+#      para que otra sesion no llene el espacio libre entre la validacion y el guardado.
+# ==============================
+
+class SubtaskPatchView(BaseView, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _horas_usadas_en_dia(self, user, fecha, excluir_subtarea_id=None):
+        """Reutiliza la misma logica de calculo de horas que ValidarLimiteHorasView."""
+        from django.db.models import Sum
+        horas_actividades = Activity.objects.filter(
+            usuario=user,
+            due_date=fecha
+        ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
+
+        subtareas = Subtask.objects.filter(
+            activity__usuario=user,
+            fecha=fecha
+        )
+        if excluir_subtarea_id:
+            subtareas = subtareas.exclude(id=excluir_subtarea_id)
+        horas_subtareas = subtareas.aggregate(total=Sum('horas_estimadas'))['total'] or 0
+
+        return horas_actividades + horas_subtareas
+
+    def patch(self, request, pk):
+        from django.db import transaction
+        from .serializers import SubtaskPatchSerializer
+
+        # ── 1. Obtener la subtarea con bloqueo de fila (concurrencia)
+        #    select_for_update() bloquea el registro hasta que la transaccion termine,
+        #    evitando que otra sesion simultanea ocupe el mismo espacio de horas.
+        try:
+            with transaction.atomic():
+                subtarea = (
+                    Subtask.objects
+                    .select_for_update()
+                    .select_related('activity')
+                    .get(pk=pk, activity__usuario=request.user)
+                )
+
+                # ── 2. Deserializar y validar campos recibidos (parcial=True)
+                serializer = SubtaskPatchSerializer(
+                    subtarea,
+                    data=request.data,
+                    partial=True
+                )
+                if not serializer.is_valid():
+                    return self.error("Datos invalidos.", serializer.errors)
+
+                nueva_fecha = serializer.validated_data.get('fecha', subtarea.fecha)
+                nuevas_horas = serializer.validated_data.get('horas_estimadas', subtarea.horas_estimadas or 0)
+                limite = getattr(request.user, 'limite_horas_diarias', 6)
+
+                # ── 3a. Re-validar si cambian las horas en el mismo dia
+                if 'horas_estimadas' in serializer.validated_data and nueva_fecha == subtarea.fecha:
+                    horas_usadas = self._horas_usadas_en_dia(
+                        request.user,
+                        nueva_fecha or subtarea.fecha,
+                        excluir_subtarea_id=subtarea.id
+                    )
+                    if horas_usadas + nuevas_horas > limite:
+                        return Response({
+                            "status": "limit_exceeded",
+                            "message": (
+                                f"Las nuevas horas ({nuevas_horas}h) superan el limite diario. "
+                                f"Horas usadas ese dia: {horas_usadas}h, limite: {limite}h."
+                            ),
+                            "horas_usadas": horas_usadas,
+                            "horas_disponibles": round(limite - horas_usadas, 2),
+                            "limite": limite,
+                        }, status=422)
+
+                # ── 3b. Re-validar si cambia la fecha (mover de dia)
+                if 'fecha' in serializer.validated_data and nueva_fecha != subtarea.fecha:
+                    horas_nuevo_dia = self._horas_usadas_en_dia(
+                        request.user,
+                        nueva_fecha,
+                        # No excluir: la tarea aun no esta en ese dia
+                    )
+                    horas_tarea = nuevas_horas
+                    if horas_nuevo_dia + horas_tarea > limite:
+                        return Response({
+                            "status": "limit_exceeded",
+                            "message": (
+                                f"Mover la tarea al {nueva_fecha} superaria el limite diario. "
+                                f"Horas ocupadas ese dia: {horas_nuevo_dia}h, "
+                                f"horas de la tarea: {horas_tarea}h, limite: {limite}h."
+                            ),
+                            "horas_usadas": horas_nuevo_dia,
+                            "horas_disponibles": round(limite - horas_nuevo_dia, 2),
+                            "limite": limite,
+                        }, status=422)
+
+                # ── 4. Guardar — dentro de la misma transaccion atomica
+                serializer.save()
+
+                # ── 5. Respuesta estandar con el modelo actualizado
+                from .serializers import SubtaskSerializer
+                return self.success(
+                    SubtaskSerializer(subtarea).data,
+                    "Subtarea actualizada correctamente."
+                )
+
+        except Subtask.DoesNotExist:
+            return self.error(
+                "Subtarea no encontrada o no tienes permiso para modificarla.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )

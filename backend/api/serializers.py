@@ -247,3 +247,56 @@ class TareaHoySerializer(serializers.ModelSerializer):
             "total": total,
             "porcentaje": round((completadas / total) * 100, 1)
         }
+
+# ==============================
+# SPRINT 2 — SubtaskPatchSerializer
+# Serializer dedicado para PATCH parcial de subtareas.
+# Acepta cualquier combinacion de: fecha, horas_estimadas, is_completed, title.
+# Re-valida cada campo recibido de forma independiente (no confiar en el Front).
+# ==============================
+
+class SubtaskPatchSerializer(serializers.ModelSerializer):
+    """
+    Usado exclusivamente en PATCH /subtasks/{id}/patch/
+    Todos los campos son opcionales — solo se actualiza lo que llega.
+    Incluye re-validacion de limite de horas diarias si cambia fecha u horas.
+    """
+    fecha = serializers.DateField(required=False, allow_null=True)
+    horas_estimadas = serializers.FloatField(required=False, allow_null=True)
+    is_completed = serializers.BooleanField(required=False)
+    title = serializers.CharField(required=False)
+
+    class Meta:
+        model = Subtask
+        fields = ['fecha', 'horas_estimadas', 'is_completed', 'title']
+
+    def validate_title(self, value):
+        if value and len(value.strip()) < 3:
+            raise serializers.ValidationError("El titulo debe tener al menos 3 caracteres.")
+        return value.strip() if value else value
+
+    def validate_horas_estimadas(self, value):
+        if value is None:
+            return value
+        if value < 0:
+            raise serializers.ValidationError("Las horas estimadas no pueden ser negativas.")
+        # Re-validar contra horas de la actividad padre
+        if self.instance:
+            activity = self.instance.activity
+            if activity.horas_estimadas and float(value) > float(activity.horas_estimadas):
+                raise serializers.ValidationError(
+                    f"Las horas estimadas ({value}h) no pueden superar las de la actividad ({activity.horas_estimadas}h)."
+                )
+        return value
+
+    def validate_fecha(self, value):
+        if value is None:
+            return value
+        # Re-validar que la nueva fecha no supere la fecha de entrega de la actividad
+        if self.instance:
+            activity = self.instance.activity
+            if activity.due_date and value > activity.due_date:
+                raise serializers.ValidationError(
+                    f"La fecha ({value}) no puede ser posterior a la entrega de la actividad ({activity.due_date})."
+                )
+        return value

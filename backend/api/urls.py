@@ -4,7 +4,8 @@ from .views import (
     ActivityListCreateAPIView, ActivityRetrieveUpdateDestroyAPIView,
     SubtaskListCreateAPIView, SubtaskRetrieveUpdateDestroyAPIView,
     RegisterView, LoginView, TareasHoyView, ReprogramarActividadView,
-    LimiteHorasDiariasView, ValidarLimiteHorasView
+    LimiteHorasDiariasView, ValidarLimiteHorasView,
+    SubtaskPatchView,  # Sprint 2
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -29,6 +30,9 @@ urlpatterns = [
     # Limite horas y validacion
     path('usuario/limite-horas/', LimiteHorasDiariasView.as_view(), name='limite-horas'),
     path('validar/limite-horas/', ValidarLimiteHorasView.as_view(), name='validar-limite-horas'),
+
+    # Sprint 2 — PATCH parcial de subtarea con re-validacion y concurrencia
+    path('subtasks/<int:pk>/patch/', SubtaskPatchView.as_view(), name='subtask-patch'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
