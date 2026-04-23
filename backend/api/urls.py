@@ -6,6 +6,10 @@ from .views import (
     RegisterView, LoginView, TareasHoyView, ReprogramarActividadView,
     LimiteHorasDiariasView, ValidarLimiteHorasView,
     SubtaskPatchView,  # Sprint 2
+    # Sprint 3
+    RegisterV2View, LoginV2View,
+    ActivityCreateV2View, SubtaskCreateV2View,
+    ReprogramarActividadV2View,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -33,6 +37,13 @@ urlpatterns = [
 
     # Sprint 2 — PATCH parcial de subtarea con re-validacion y concurrencia
     path('subtasks/<int:pk>/patch/', SubtaskPatchView.as_view(), name='subtask-patch'),
+
+    # Sprint 3 — Respuestas unificadas, códigos HTTP semánticos e idempotencia
+    path('v2/auth/register/', RegisterV2View.as_view(), name='v2-register'),
+    path('v2/auth/login/', LoginV2View.as_view(), name='v2-login'),
+    path('v2/activities/', ActivityCreateV2View.as_view(), name='v2-activity-create'),
+    path('v2/subtasks/', SubtaskCreateV2View.as_view(), name='v2-subtask-create'),
+    path('v2/activities/<int:pk>/reprogramar/', ReprogramarActividadV2View.as_view(), name='v2-activity-reprogramar'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),

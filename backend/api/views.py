@@ -608,3 +608,344 @@ class SubtaskPatchView(BaseView, APIView):
                 "Subtarea no encontrada o no tienes permiso para modificarla.",
                 status_code=status.HTTP_404_NOT_FOUND
             )
+
+
+# ==============================
+# SPRINT 3 — ESTANDARIZACIÓN DE RESPUESTAS, CÓDIGOS HTTP Y IDEMPOTENCIA
+# ==============================
+
+# ── Helper global de respuesta unificada ──────────────────────────────────────
+# Estructura fija que el Front SIEMPRE puede esperar:
+#   Éxito:  { success: true,  message: "...", data: {...} }
+#   Error:  { success: false, message: "...", error_code: "CODIGO_INTERNO", data: {...} }
+#
+# Códigos HTTP usados semánticamente:
+#   200  OK
+#   201  Created
+#   400  BAD_REQUEST        — campo faltante o formato inválido
+#   401  UNAUTHORIZED       — token expirado / credenciales incorrectas
+#   403  FORBIDDEN          — sin permiso sobre el recurso
+#   404  NOT_FOUND          — recurso no existe
+#   409  CONFLICT           — idempotencia: petición duplicada detectada
+#   422  UNPROCESSABLE      — límite de horas excedido
+# ─────────────────────────────────────────────────────────────────────────────
+
+def std_success(data, message="OK", status_code=200):
+    """Respuesta de éxito unificada para el Sprint 3."""
+    return Response(
+        {"success": True, "message": message, "data": data},
+        status=status_code
+    )
+
+
+def std_error(message, error_code="ERROR", data=None, status_code=400):
+    """
+    Respuesta de error unificada para el Sprint 3.
+    error_code es un string interno que el Front puede usar para lógica:
+      VALIDATION_ERROR, AUTH_FAILED, ACCOUNT_DISABLED, NOT_FOUND,
+      FORBIDDEN, LIMIT_EXCEEDED, DUPLICATE_REQUEST, SERVER_ERROR
+    """
+    return Response(
+        {"success": False, "message": message, "error_code": error_code, "data": data},
+        status=status_code
+    )
+
+
+# ── Idempotencia ──────────────────────────────────────────────────────────────
+# Cache en memoria (Django cache framework) con TTL de 5 segundos.
+# Si llegan dos peticiones idénticas del mismo usuario en ese ventana,
+# la segunda recibe 409 CONFLICT sin tocar la base de datos.
+# Clave: "idempotency:<user_id>:<hash_del_body>"
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _idempotency_key(user_id, data: dict) -> str:
+    import hashlib, json
+    payload = json.dumps(data, sort_keys=True, default=str)
+    digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
+    return f"idempotency:{user_id}:{digest}"
+
+
+def _check_idempotency(user_id, data: dict):
+    """
+    Retorna True si la petición ya fue procesada recientemente (duplicada).
+    Retorna False si es nueva y la registra en caché.
+    """
+    from django.core.cache import cache
+    key = _idempotency_key(user_id, data)
+    if cache.get(key):
+        return True          # duplicada
+    cache.set(key, True, timeout=5)   # TTL 5 segundos
+    return False             # nueva — procesada normalmente
+
+
+# ==============================
+# SPRINT 3 — REGISTRO (con respuesta unificada + idempotencia)
+# POST /api/v2/auth/register/
+# ==============================
+
+class RegisterV2View(APIView):
+    """
+    Misma lógica que RegisterView pero con:
+    - Respuesta { success, message, error_code, data }
+    - Idempotencia: doble clic no crea dos usuarios
+    - Mensajes de error orientados a la solución
+    """
+    def post(self, request):
+        # Idempotencia — detecta doble envío en < 5 seg
+        if _check_idempotency(request.data.get('email', 'anon'), request.data):
+            return std_error(
+                "Esta solicitud ya fue procesada. Si no recibiste confirmación, espera unos segundos e intenta de nuevo.",
+                error_code="DUPLICATE_REQUEST",
+                status_code=409
+            )
+
+        from .serializers import RegisterSerializer
+        serializer = RegisterSerializer(data=request.data)
+        if not serializer.is_valid():
+            return std_error(
+                "Revisa los datos ingresados e intenta de nuevo.",
+                error_code="VALIDATION_ERROR",
+                data=serializer.errors,
+                status_code=400
+            )
+        user = serializer.save()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        return std_success({
+            "email": user.email,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        }, "Cuenta creada exitosamente. Bienvenido.", status_code=201)
+
+
+# ==============================
+# SPRINT 3 — LOGIN (con respuesta unificada + códigos HTTP semánticos)
+# POST /api/v2/auth/login/
+# ==============================
+
+class LoginV2View(APIView):
+    """
+    Misma lógica que LoginView pero con:
+    - 401 para credenciales incorrectas (token expirado lo maneja SimpleJWT automáticamente)
+    - 403 para cuenta desactivada
+    - error_code interno para que el Front distinga el caso
+    """
+    def post(self, request):
+        from .serializers import LoginSerializer
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return std_error(
+                "El correo y la contraseña son obligatorios.",
+                error_code="VALIDATION_ERROR",
+                data=serializer.errors,
+                status_code=400
+            )
+
+        email = serializer.validated_data['email']
+        password = serializer.validated_data['password']
+
+        try:
+            user_obj = Usuario.objects.get(email=email)
+        except Usuario.DoesNotExist:
+            return std_error(
+                f"No encontramos una cuenta asociada al correo '{email}'. Verifica el correo o regístrate.",
+                error_code="AUTH_FAILED",
+                status_code=401
+            )
+
+        from django.contrib.auth import authenticate
+        user = authenticate(username=user_obj.username, password=password)
+        if not user:
+            return std_error(
+                "La contraseña es incorrecta. Inténtalo de nuevo o usa '¿Olvidaste tu contraseña?'.",
+                error_code="AUTH_FAILED",
+                status_code=401
+            )
+
+        if not user.activo:
+            return std_error(
+                "Tu cuenta está desactivada. Contacta al administrador para reactivarla.",
+                error_code="ACCOUNT_DISABLED",
+                status_code=403
+            )
+
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        return std_success({
+            "nombre": user.nombre,
+            "apellido": user.apellido,
+            "email": user.email,
+            "rol": user.rol,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        }, "Sesión iniciada correctamente.")
+
+
+# ==============================
+# SPRINT 3 — CREAR ACTIVIDAD (con idempotencia + respuesta unificada)
+# POST /api/v2/activities/
+# ==============================
+
+class ActivityCreateV2View(APIView):
+    """
+    Crea una actividad con:
+    - Idempotencia: si el mismo usuario envía el mismo título+fecha dos veces
+      en < 5 seg, la segunda petición devuelve 409 sin crear duplicado.
+    - Mensajes de error orientados a la solución.
+    - Respuesta unificada { success, message, error_code, data }.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Idempotencia por usuario + payload completo
+        if _check_idempotency(request.user.id, request.data):
+            return std_error(
+                "Detectamos una solicitud duplicada. La actividad puede haberse creado ya; revisa tu lista antes de intentar de nuevo.",
+                error_code="DUPLICATE_REQUEST",
+                status_code=409
+            )
+
+        from .serializers import ActivitySerializer
+        serializer = ActivitySerializer(data=request.data)
+        if not serializer.is_valid():
+            # Mapear errores de campo a mensajes orientados a la solución
+            errors = serializer.errors
+            message = _humanize_activity_errors(errors)
+            return std_error(message, error_code="VALIDATION_ERROR", data=errors, status_code=400)
+
+        serializer.save(usuario=request.user)
+        return std_success(serializer.data, "Actividad creada correctamente.", status_code=201)
+
+
+def _humanize_activity_errors(errors: dict) -> str:
+    """
+    Convierte los errores del serializer en un mensaje humano único
+    orientado a la solución, en lugar de mostrar el dict técnico.
+    """
+    priority = [
+        ('title',         "El título debe tener al menos 3 caracteres."),
+        ('due_date',      "La fecha de entrega no puede ser en el pasado. Usa una fecha futura."),
+        ('start_date',    "La fecha de inicio no puede ser en el pasado."),
+        ('difficulty',    "La dificultad debe ser: baja, media, alta o crítica."),
+        ('activity_type', "El tipo debe ser: exam, project, presentation o homework."),
+        ('description',   "La descripción debe tener al menos 3 caracteres."),
+    ]
+    for field, msg in priority:
+        if field in errors:
+            return msg
+    return "Revisa los datos del formulario e intenta de nuevo."
+
+
+# ==============================
+# SPRINT 3 — CREAR SUBTAREA (con idempotencia + respuesta unificada)
+# POST /api/v2/subtasks/
+# ==============================
+
+class SubtaskCreateV2View(APIView):
+    """
+    Crea una subtarea con:
+    - Idempotencia: evita duplicados por doble clic.
+    - 403 si el usuario no es dueño de la actividad padre.
+    - Mensajes de error claros.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if _check_idempotency(request.user.id, request.data):
+            return std_error(
+                "Detectamos una solicitud duplicada. La subtarea puede haberse creado ya; revisa la actividad antes de intentar de nuevo.",
+                error_code="DUPLICATE_REQUEST",
+                status_code=409
+            )
+
+        from .serializers import SubtaskSerializer
+        serializer = SubtaskSerializer(data=request.data)
+        if not serializer.is_valid():
+            errors = serializer.errors
+            message = _humanize_subtask_errors(errors)
+            return std_error(message, error_code="VALIDATION_ERROR", data=errors, status_code=400)
+
+        activity = serializer.validated_data.get('activity')
+        if activity and activity.usuario != request.user:
+            return std_error(
+                "No tienes permiso para agregar subtareas a esta actividad.",
+                error_code="FORBIDDEN",
+                status_code=403
+            )
+
+        serializer.save()
+        return std_success(serializer.data, "Subtarea creada correctamente.", status_code=201)
+
+
+def _humanize_subtask_errors(errors: dict) -> str:
+    priority = [
+        ('title',           "El título debe tener al menos 3 caracteres."),
+        ('fecha',           "La fecha de la subtarea no puede superar la fecha de entrega de la actividad."),
+        ('horas_estimadas', "Las horas estimadas no pueden superar las horas totales de la actividad."),
+        ('activity',        "Debes indicar a qué actividad pertenece esta subtarea."),
+    ]
+    for field, msg in priority:
+        if field in errors:
+            return msg
+    return "Revisa los datos de la subtarea e intenta de nuevo."
+
+
+# ==============================
+# SPRINT 3 — REPROGRAMAR ACTIVIDAD V2 (mensajes orientados a la solución)
+# PATCH /api/v2/activities/<pk>/reprogramar/
+# ==============================
+
+class ReprogramarActividadV2View(APIView):
+    """
+    Igual que ReprogramarActividadView pero con:
+    - Mensajes de error orientados a la solución (no mensajes técnicos).
+    - Respuesta unificada { success, message, error_code, data }.
+    - Códigos HTTP semánticos.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            actividad = Activity.objects.get(pk=pk, usuario=request.user)
+        except Activity.DoesNotExist:
+            return std_error(
+                "No encontramos esta actividad o no tienes permiso para modificarla.",
+                error_code="NOT_FOUND",
+                status_code=404
+            )
+
+        nueva_fecha = request.data.get('due_date')
+
+        if not nueva_fecha:
+            return std_error(
+                "Debes enviar el campo 'due_date' con la nueva fecha de entrega.",
+                error_code="VALIDATION_ERROR",
+                status_code=400
+            )
+
+        try:
+            from datetime import datetime
+            fecha_parsed = datetime.strptime(nueva_fecha, '%Y-%m-%d').date()
+        except ValueError:
+            return std_error(
+                "El formato de fecha no es válido. Usa el formato YYYY-MM-DD (ej: 2026-05-30).",
+                error_code="VALIDATION_ERROR",
+                status_code=400
+            )
+
+        if fecha_parsed < timezone.localdate():
+            return std_error(
+                "La fecha de reprogramación no puede ser en el pasado. Elige una fecha igual o posterior a hoy.",
+                error_code="VALIDATION_ERROR",
+                status_code=400
+            )
+
+        actividad.due_date = fecha_parsed
+        actividad.save()
+
+        return std_success({
+            "id": actividad.id,
+            "title": actividad.title,
+            "due_date": str(actividad.due_date),
+            "updated_at": str(actividad.updated_at),
+        }, "Actividad reprogramada correctamente.")
