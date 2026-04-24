@@ -1280,3 +1280,346 @@ class SubtaskPatchV2View(APIView):
                 "error": "NOT_FOUND",
                 "message": "Subtarea no encontrada o no tienes permiso para modificarla.",
             }, status=404)
+
+
+# ==============================
+# SPRINT 4b — DISTRIBUCIÓN AUTOMÁTICA DE ACTIVIDADES EN VARIOS DÍAS
+# POST /api/v2/activities/distribuir/
+#
+# Lógica:
+#   1. Recibe la actividad normalmente (title, horas_estimadas, start_date, due_date, etc.)
+#   2. Si horas_estimadas <= limite_diario → crea la actividad normal sin subtareas.
+#   3. Si horas_estimadas > limite_diario → distribuye el trabajo en bloques de
+#      maximo `limite_diario` horas por día laborable entre start_date y due_date,
+#      creando una Subtask por cada bloque de trabajo.
+#   4. Devuelve la actividad creada + las subtareas generadas + el plan de distribución.
+#
+# Ejemplo:
+#   horas_estimadas=14, limite=6, start_date=lunes, due_date=miercoles
+#   → Subtarea 1: lunes   6h
+#   → Subtarea 2: martes  6h
+#   → Subtarea 3: miercoles 2h
+# ==============================
+
+def _distribuir_horas_en_dias(start_date, due_date, horas_totales: float, limite: float, user) -> list:
+    """
+    Distribuye `horas_totales` en bloques de máximo `limite` horas
+    entre start_date y due_date (solo días laborables: lunes-viernes).
+    Considera las horas ya ocupadas en cada día del usuario.
+
+    Retorna lista de dicts:
+        [{ "fecha": date, "horas": float, "horas_ya_ocupadas": float }, ...]
+    """
+    from datetime import timedelta
+
+    bloques = []
+    horas_restantes = round(horas_totales, 2)
+    fecha_actual = start_date
+
+    while horas_restantes > 0 and fecha_actual <= due_date:
+        # Solo días laborables
+        if fecha_actual.weekday() < 5:
+            desglose = _calcular_horas_dia(user, fecha_actual)
+            horas_ocupadas = desglose["total"]
+            horas_disponibles_dia = round(limite - horas_ocupadas, 2)
+
+            if horas_disponibles_dia > 0:
+                horas_bloque = round(min(horas_disponibles_dia, horas_restantes), 2)
+                bloques.append({
+                    "fecha": fecha_actual,
+                    "horas": horas_bloque,
+                    "horas_ya_ocupadas": horas_ocupadas,
+                })
+                horas_restantes = round(horas_restantes - horas_bloque, 2)
+
+        fecha_actual = fecha_actual + timedelta(days=1)
+
+    return bloques, horas_restantes  # horas_restantes > 0 significa que no hubo suficientes días
+
+
+class ActivityDistribuirView(APIView):
+    """
+    Crea una actividad y si sus horas superan el límite diario,
+    genera automáticamente las subtareas distribuidas en días laborables.
+
+    POST /api/v2/activities/distribuir/
+    Body: igual que POST /api/activities/ — ningún campo nuevo requerido.
+
+    Respuesta exitosa incluye:
+    {
+        "success": true,
+        "message": "...",
+        "data": {
+            "actividad": { ...actividad creada... },
+            "subtareas_generadas": [ ...subtareas... ],
+            "plan_distribucion": [
+                { "dia": 1, "fecha": "2026-05-01", "horas_asignadas": 6.0, "horas_ya_ocupadas": 0.0 },
+                { "dia": 2, "fecha": "2026-05-02", "horas_asignadas": 6.0, "horas_ya_ocupadas": 1.0 },
+                { "dia": 3, "fecha": "2026-05-05", "horas_asignadas": 2.0, "horas_ya_ocupadas": 0.0 },
+            ],
+            "distribucion_necesaria": true,
+            "horas_no_distribuidas": 0.0   — si > 0 no hubo suficientes dias laborables
+        }
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.db import transaction
+        from .serializers import ActivitySerializer, SubtaskSerializer
+
+        serializer = ActivitySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                "success": False,
+                "error": "VALIDATION_ERROR",
+                "message": _humanize_activity_errors(serializer.errors),
+                "data": serializer.errors,
+            }, status=400)
+
+        # Sanitizar horas
+        horas_raw = request.data.get('horas_estimadas', 0)
+        try:
+            horas_totales = _sanitizar_horas(horas_raw)
+        except ValueError as e:
+            return Response({
+                "success": False,
+                "error": "VALIDATION_ERROR",
+                "message": str(e),
+            }, status=400)
+
+        limite = float(getattr(request.user, 'limite_horas_diarias', 6))
+        start_date = serializer.validated_data.get('start_date')
+        due_date   = serializer.validated_data.get('due_date')
+
+        # ── Si no supera el límite: crear normal sin subtareas automáticas
+        if horas_totales <= limite:
+            with transaction.atomic():
+                actividad = serializer.save(usuario=request.user)
+            return Response({
+                "success": True,
+                "message": "Actividad creada correctamente. No requiere distribución.",
+                "data": {
+                    "actividad": ActivitySerializer(actividad).data,
+                    "subtareas_generadas": [],
+                    "plan_distribucion": [],
+                    "distribucion_necesaria": False,
+                    "horas_no_distribuidas": 0.0,
+                },
+            }, status=201)
+
+        # ── Si supera el límite: calcular distribución antes de guardar
+        if not start_date or not due_date:
+            return Response({
+                "success": False,
+                "error": "VALIDATION_ERROR",
+                "message": (
+                    f"La actividad requiere {horas_totales}h que superan el límite de {limite}h/día. "
+                    "Para distribuirla automáticamente debes enviar 'start_date' y 'due_date'."
+                ),
+            }, status=400)
+
+        bloques, horas_no_distribuidas = _distribuir_horas_en_dias(
+            start_date, due_date, horas_totales, limite, request.user
+        )
+
+        if not bloques:
+            return Response({
+                "success": False,
+                "error": "SIN_DIAS_DISPONIBLES",
+                "message": (
+                    f"No hay días laborables con capacidad disponible entre "
+                    f"{start_date} y {due_date} para distribuir {horas_totales}h. "
+                    "Considera ampliar el rango de fechas o reducir las horas."
+                ),
+            }, status=422)
+
+        # ── Crear actividad + subtareas en una transacción atómica
+        with transaction.atomic():
+            actividad = serializer.save(usuario=request.user)
+
+            subtareas_creadas = []
+            for i, bloque in enumerate(bloques, start=1):
+                subtarea = Subtask.objects.create(
+                    title=f"{actividad.title} — Bloque {i}",
+                    activity=actividad,
+                    fecha=bloque["fecha"],
+                    horas_estimadas=bloque["horas"],
+                    is_completed=False,
+                )
+                subtareas_creadas.append(subtarea)
+
+        # ── Armar plan de distribución para la respuesta
+        plan = [
+            {
+                "dia": i,
+                "fecha": str(bloque["fecha"]),
+                "dia_semana": ["Lunes","Martes","Miércoles","Jueves","Viernes"][bloque["fecha"].weekday()],
+                "horas_asignadas": bloque["horas"],
+                "horas_ya_ocupadas": bloque["horas_ya_ocupadas"],
+            }
+            for i, bloque in enumerate(bloques, start=1)
+        ]
+
+        mensaje = (
+            f"Actividad creada y distribuida en {len(bloques)} día(s) laborable(s)."
+            if horas_no_distribuidas == 0
+            else (
+                f"Actividad creada pero {horas_no_distribuidas}h no pudieron distribuirse "
+                f"por falta de días disponibles antes de {due_date}."
+            )
+        )
+
+        return Response({
+            "success": True,
+            "message": mensaje,
+            "data": {
+                "actividad": ActivitySerializer(actividad).data,
+                "subtareas_generadas": SubtaskSerializer(subtareas_creadas, many=True).data,
+                "plan_distribucion": plan,
+                "distribucion_necesaria": True,
+                "horas_no_distribuidas": horas_no_distribuidas,
+            },
+        }, status=201)
+
+
+# ==============================
+# SPRINT 5 — EXCLUSIÓN DE ACTIVIDADES COMPLETADAS
+#
+# Una actividad se considera COMPLETADA cuando:
+#   horas_trabajadas >= horas_estimadas  (y horas_estimadas > 0)
+#
+# Endpoints nuevos bajo v2/ que excluyen completadas por defecto:
+#   GET /api/v2/activities/          — lista solo pendientes
+#   GET /api/v2/tasks/hoy/           — panel de hoy sin completadas
+#
+# Los endpoints originales no se tocan.
+# ==============================
+
+def _es_completada(actividad) -> bool:
+    """
+    Determina si una actividad está completada.
+    Criterio: horas_trabajadas >= horas_estimadas y horas_estimadas > 0.
+    """
+    return (
+        actividad.horas_estimadas
+        and actividad.horas_estimadas > 0
+        and actividad.horas_trabajadas >= actividad.horas_estimadas
+    )
+
+
+def _filtro_pendientes():
+    """
+    Retorna el filtro Q para excluir actividades completadas desde el ORM.
+    Se puede usar en cualquier queryset con .exclude(**_filtro_pendientes()).
+    """
+    from django.db.models import Q
+    # Excluir aquellas donde horas_trabajadas >= horas_estimadas > 0
+    return Q(horas_estimadas__gt=0, horas_trabajadas__gte=models.F('horas_estimadas'))
+
+
+class ActivityListV2View(BaseView, APIView):
+    """
+    GET /api/v2/activities/
+    Lista solo actividades PENDIENTES del usuario autenticado.
+    Una actividad desaparece de esta lista cuando horas_trabajadas >= horas_estimadas.
+
+    Query params opcionales:
+      ?incluir_completadas=true  — devuelve todas incluyendo las completadas
+      ?filtrar_por=dificultad|asignatura|horas_estimadas|fecha
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import F
+        incluir_completadas = request.query_params.get('incluir_completadas', 'false').lower() == 'true'
+
+        qs = Activity.objects.filter(usuario=request.user)
+
+        if not incluir_completadas:
+            # Excluir actividades donde horas_trabajadas >= horas_estimadas > 0
+            qs = qs.exclude(
+                horas_estimadas__gt=0,
+                horas_trabajadas__gte=F('horas_estimadas')
+            )
+
+        from .serializers import ActivitySerializer
+        serializer = ActivitySerializer(qs.order_by('due_date'), many=True)
+        total_completadas = Activity.objects.filter(
+            usuario=request.user,
+            horas_estimadas__gt=0,
+            horas_trabajadas__gte=F('horas_estimadas')
+        ).count()
+
+        return self.success({
+            "actividades": serializer.data,
+            "total_pendientes": qs.count(),
+            "total_completadas": total_completadas,
+            "mostrando_completadas": incluir_completadas,
+        }, "Actividades obtenidas correctamente.")
+
+
+class TareasHoyV2View(BaseView, APIView):
+    """
+    GET /api/v2/tasks/hoy/
+    Igual que TareasHoyView pero excluye actividades completadas
+    (horas_trabajadas >= horas_estimadas) de todos los grupos y contadores.
+
+    Query params:
+      ?incluir_completadas=true  — comportamiento idéntico al endpoint original
+      ?filtrar_por=dificultad|asignatura|horas_estimadas|fecha
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import F
+        hoy = timezone.localdate()
+        fin_semana = hoy + timezone.timedelta(days=7)
+        incluir_completadas = request.query_params.get('incluir_completadas', 'false').lower() == 'true'
+
+        tareas = Activity.objects.filter(usuario=request.user)
+
+        # Excluir completadas por defecto
+        if not incluir_completadas:
+            tareas = tareas.exclude(
+                horas_estimadas__gt=0,
+                horas_trabajadas__gte=F('horas_estimadas')
+            )
+
+        if not tareas.exists():
+            return self.success({
+                "empty": True,
+                "mensaje": "No tienes tareas pendientes.",
+                "contadores": {"hoy": 0, "esta_semana": 0, "atrasadas": 0},
+                "vencidas": [],
+                "hoy": [],
+                "proximas": [],
+            }, "No tienes tareas pendientes.")
+
+        # Ordenamiento
+        filtrar_por = request.query_params.get('filtrar_por', None)
+        orden = 'horas_estimadas'
+        if filtrar_por == 'dificultad':
+            orden = 'difficulty'
+        elif filtrar_por == 'asignatura':
+            orden = 'asignatura'
+        elif filtrar_por == 'fecha':
+            orden = 'due_date'
+
+        vencidas   = tareas.filter(due_date__lt=hoy).order_by(orden)
+        hoy_tareas = tareas.filter(due_date=hoy).order_by(orden)
+        proximas   = tareas.filter(due_date__gt=hoy).order_by(orden)
+
+        contadores = {
+            "hoy":        hoy_tareas.count(),
+            "esta_semana": tareas.filter(due_date__gt=hoy, due_date__lte=fin_semana).count(),
+            "atrasadas":  vencidas.count(),
+        }
+
+        return self.success({
+            "empty": False,
+            "contadores": contadores,
+            "vencidas":  TareaHoyV2Serializer(vencidas, many=True).data,
+            "hoy":       TareaHoyV2Serializer(hoy_tareas, many=True).data,
+            "proximas":  TareaHoyV2Serializer(proximas, many=True).data,
+        }, "Tareas obtenidas correctamente.")
