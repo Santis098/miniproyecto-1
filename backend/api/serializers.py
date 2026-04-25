@@ -300,3 +300,59 @@ class SubtaskPatchSerializer(serializers.ModelSerializer):
                     f"La fecha ({value}) no puede ser posterior a la entrega de la actividad ({activity.due_date})."
                 )
         return value
+
+
+# ==============================
+# SPRINT 5 — CAMPO estado CALCULADO
+# Se agrega via herencia para no tocar TareaHoySerializer ni ActivitySerializer.
+#
+# Lógica:
+#   sin_empezar  → horas_trabajadas = 0
+#   en_progreso  → 0 < horas_trabajadas < horas_estimadas
+#   completada   → horas_trabajadas >= horas_estimadas (y horas_estimadas > 0)
+#   sin_horas    → horas_estimadas = 0 o null (no se puede calcular estado)
+# ==============================
+
+class TareaHoyV2Serializer(TareaHoySerializer):
+    """
+    Extiende TareaHoySerializer agregando:
+      - estado:              'sin_empezar' | 'en_progreso' | 'completada' | 'sin_horas'
+      - estado_label:        texto legible para mostrar en UI
+      - porcentaje_completado: 0-100 (igual que progreso_horas pero como campo directo)
+    """
+    estado              = serializers.SerializerMethodField()
+    estado_label        = serializers.SerializerMethodField()
+    porcentaje_completado = serializers.SerializerMethodField()
+
+    class Meta(TareaHoySerializer.Meta):
+        fields = TareaHoySerializer.Meta.fields + [
+            'estado', 'estado_label', 'porcentaje_completado'
+        ]
+
+    def get_estado(self, obj):
+        estimadas  = obj.horas_estimadas or 0
+        trabajadas = obj.horas_trabajadas or 0
+
+        if estimadas <= 0:
+            return 'sin_horas'
+        if trabajadas <= 0:
+            return 'sin_empezar'
+        if trabajadas >= estimadas:
+            return 'completada'
+        return 'en_progreso'
+
+    def get_estado_label(self, obj):
+        labels = {
+            'sin_horas':   'Sin horas definidas',
+            'sin_empezar': 'Sin empezar',
+            'en_progreso': 'En progreso',
+            'completada':  'Completada',
+        }
+        return labels.get(self.get_estado(obj), 'Desconocido')
+
+    def get_porcentaje_completado(self, obj):
+        estimadas  = obj.horas_estimadas or 0
+        trabajadas = obj.horas_trabajadas or 0
+        if estimadas <= 0:
+            return 0
+        return round(min((trabajadas / estimadas) * 100, 100), 1)

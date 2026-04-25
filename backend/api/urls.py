@@ -12,6 +12,9 @@ from .views import (
     ReprogramarActividadV2View,
     # Sprint 4
     ValidarLimiteHorasV2View, SubtaskPatchV2View,
+    ActivityDistribuirView,  # Sprint 4b
+    # Sprint 5
+    ActivityListV2View, TareasHoyV2View,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -46,6 +49,13 @@ urlpatterns = [
     path('v2/activities/', ActivityCreateV2View.as_view(), name='v2-activity-create'),
     path('v2/subtasks/', SubtaskCreateV2View.as_view(), name='v2-subtask-create'),
     path('v2/activities/<int:pk>/reprogramar/', ReprogramarActividadV2View.as_view(), name='v2-activity-reprogramar'),
+
+    # Sprint 5 — Exclusión de actividades completadas
+    path('v2/activities/', ActivityListV2View.as_view(), name='v2-activity-list'),
+    path('v2/tasks/hoy/', TareasHoyV2View.as_view(), name='v2-tasks-hoy'),
+
+    # Sprint 4b — Distribución automática de actividades
+    path('v2/activities/distribuir/', ActivityDistribuirView.as_view(), name='v2-activity-distribuir'),
 
     # Sprint 4 — Cálculos precisos, payload math y sanitización de tipos
     path('v2/validar/limite-horas/', ValidarLimiteHorasV2View.as_view(), name='v2-validar-limite'),
