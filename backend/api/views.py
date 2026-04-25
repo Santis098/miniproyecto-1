@@ -1623,3 +1623,384 @@ class TareasHoyV2View(BaseView, APIView):
             "hoy":       TareaHoyV2Serializer(hoy_tareas, many=True).data,
             "proximas":  TareaHoyV2Serializer(proximas, many=True).data,
         }, "Tareas obtenidas correctamente.")
+
+
+# ==============================
+# SWAGGER / EXTEND_SCHEMA — documentación de todos los endpoints
+# Se aplica DESPUÉS de definir las clases para no tocar ningún código existente.
+# ==============================
+
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
+
+# ── AUTH ─────────────────────────────────────────────────────────────────────
+
+RegisterView = extend_schema(
+    tags=["Auth"],
+    summary="Registrar nuevo usuario",
+    description="Crea una cuenta nueva. Devuelve tokens JWT al instante.",
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "nombre":    {"type": "string", "example": "Juan"},
+                "apellido":  {"type": "string", "example": "Pérez"},
+                "email":     {"type": "string", "example": "juan@email.com"},
+                "password":  {"type": "string", "example": "segura123"},
+                "password2": {"type": "string", "example": "segura123"},
+            },
+            "required": ["nombre", "apellido", "email", "password", "password2"],
+        }
+    },
+    responses={
+        201: {"description": "Usuario creado. Devuelve access y refresh token."},
+        400: {"description": "Datos inválidos (email duplicado, contraseñas distintas, etc.)"},
+    }
+)(RegisterView)
+
+LoginView = extend_schema(
+    tags=["Auth"],
+    summary="Iniciar sesión",
+    description="Autentica al usuario con email y contraseña. Devuelve tokens JWT.",
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "email":    {"type": "string", "example": "juan@email.com"},
+                "password": {"type": "string", "example": "segura123"},
+            },
+            "required": ["email", "password"],
+        }
+    },
+    responses={
+        200: {"description": "Login exitoso. Devuelve nombre, email, rol, access y refresh token."},
+        401: {"description": "Correo no existe o contraseña incorrecta."},
+        403: {"description": "Cuenta desactivada."},
+    }
+)(LoginView)
+
+# ── ASIGNATURAS ───────────────────────────────────────────────────────────────
+
+AsignaturaListCreateAPIView = extend_schema_view(
+    list=extend_schema(tags=["Asignaturas"], summary="Listar asignaturas"),
+    create=extend_schema(tags=["Asignaturas"], summary="Crear asignatura"),
+)(AsignaturaListCreateAPIView)
+
+AsignaturaRetrieveUpdateDestroyAPIView = extend_schema_view(
+    retrieve=extend_schema(tags=["Asignaturas"], summary="Detalle de asignatura"),
+    update=extend_schema(tags=["Asignaturas"], summary="Actualizar asignatura"),
+    destroy=extend_schema(tags=["Asignaturas"], summary="Eliminar asignatura"),
+)(AsignaturaRetrieveUpdateDestroyAPIView)
+
+# ── ACTIVIDADES ───────────────────────────────────────────────────────────────
+
+ActivityListCreateAPIView = extend_schema_view(
+    list=extend_schema(
+        tags=["Actividades"],
+        summary="Listar actividades del usuario",
+        description="Devuelve todas las actividades del usuario autenticado.",
+    ),
+    create=extend_schema(
+        tags=["Actividades"],
+        summary="Crear actividad",
+        description=(
+            "Crea una actividad. Campos requeridos: title, description, due_date, "
+            "start_date, difficulty (baja/media/alta/critica), "
+            "activity_type (exam/project/presentation/homework)."
+        ),
+    ),
+)(ActivityListCreateAPIView)
+
+ActivityRetrieveUpdateDestroyAPIView = extend_schema_view(
+    retrieve=extend_schema(tags=["Actividades"], summary="Detalle de actividad"),
+    update=extend_schema(tags=["Actividades"], summary="Actualizar actividad"),
+    destroy=extend_schema(tags=["Actividades"], summary="Eliminar actividad"),
+)(ActivityRetrieveUpdateDestroyAPIView)
+
+ReprogramarActividadView = extend_schema(
+    tags=["Actividades"],
+    summary="Reprogramar fecha de entrega",
+    description=(
+        "Cambia la due_date de la actividad. "
+        "Validaciones: formato YYYY-MM-DD, no puede ser fecha pasada, "
+        "solo el dueño puede reprogramar."
+    ),
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "due_date": {"type": "string", "example": "2026-06-15"},
+            },
+            "required": ["due_date"],
+        }
+    },
+    responses={
+        200: {"description": "Actividad reprogramada. Devuelve id, title, due_date, updated_at."},
+        400: {"description": "Fecha inválida o en el pasado."},
+        404: {"description": "Actividad no encontrada o sin permiso."},
+    }
+)(ReprogramarActividadView)
+
+# ── SUBTAREAS ─────────────────────────────────────────────────────────────────
+
+SubtaskListCreateAPIView = extend_schema_view(
+    list=extend_schema(tags=["Subtareas"], summary="Listar subtareas del usuario"),
+    create=extend_schema(
+        tags=["Subtareas"],
+        summary="Crear subtarea",
+        description="Crea una subtarea vinculada a una actividad del usuario.",
+    ),
+)(SubtaskListCreateAPIView)
+
+SubtaskRetrieveUpdateDestroyAPIView = extend_schema_view(
+    retrieve=extend_schema(tags=["Subtareas"], summary="Detalle de subtarea"),
+    update=extend_schema(tags=["Subtareas"], summary="Actualizar subtarea"),
+    destroy=extend_schema(tags=["Subtareas"], summary="Eliminar subtarea"),
+)(SubtaskRetrieveUpdateDestroyAPIView)
+
+SubtaskPatchView = extend_schema(
+    tags=["Subtareas"],
+    summary="PATCH parcial de subtarea (Sprint 2)",
+    description=(
+        "Actualiza solo los campos enviados: fecha, horas_estimadas, is_completed, title. "
+        "Re-valida el límite de horas diarias. "
+        "Usa select_for_update() para evitar condiciones de carrera."
+    ),
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "fecha":           {"type": "string", "example": "2026-05-10"},
+                "horas_estimadas": {"type": "number", "example": 2.5},
+                "is_completed":    {"type": "boolean", "example": False},
+                "title":           {"type": "string", "example": "Estudiar capítulo 3"},
+            },
+        }
+    },
+    responses={
+        200: {"description": "Subtarea actualizada. Devuelve el objeto completo."},
+        400: {"description": "Datos inválidos."},
+        404: {"description": "Subtarea no encontrada o sin permiso."},
+        422: {"description": "Límite de horas diarias excedido. Incluye math desglosado."},
+    }
+)(SubtaskPatchView)
+
+# ── TAREAS HOY ────────────────────────────────────────────────────────────────
+
+TareasHoyView = extend_schema(
+    tags=["Tareas"],
+    summary="Panel de tareas de hoy",
+    description=(
+        "Agrupa las actividades en: vencidas, hoy y próximas. "
+        "Query param opcional: ?filtrar_por=dificultad|asignatura|horas_estimadas|fecha"
+    ),
+    parameters=[
+        OpenApiParameter(
+            name="filtrar_por",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description="Ordenar por: dificultad, asignatura, horas_estimadas, fecha",
+            required=False,
+        )
+    ],
+    responses={
+        200: {"description": "Devuelve contadores + grupos vencidas/hoy/proximas."},
+    }
+)(TareasHoyView)
+
+# ── LÍMITE HORAS ──────────────────────────────────────────────────────────────
+
+LimiteHorasDiariasView = extend_schema(
+    tags=["Usuario"],
+    summary="Consultar y actualizar límite de horas diarias",
+    description=(
+        "GET: devuelve el límite actual del usuario (default 6h). "
+        "PUT: actualiza el límite. Acepta valores entre 1 y 24."
+    ),
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "limite_horas_diarias": {"type": "number", "example": 8},
+            },
+            "required": ["limite_horas_diarias"],
+        }
+    },
+    responses={
+        200: {"description": "Límite obtenido o actualizado correctamente."},
+        400: {"description": "Valor fuera del rango 1-24."},
+    }
+)(LimiteHorasDiariasView)
+
+# ── VALIDAR LÍMITE ────────────────────────────────────────────────────────────
+
+ValidarLimiteHorasView = extend_schema(
+    tags=["Validar"],
+    summary="Validar si una tarea cabe en el día",
+    description=(
+        "Suma las horas del día y verifica si las nuevas horas caben. "
+        "Si no caben, sugiere qué subtarea mover y a qué día."
+    ),
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "tipo":            {"type": "string",  "example": "subtarea"},
+                "fecha":           {"type": "string",  "example": "2026-05-05"},
+                "horas_estimadas": {"type": "number",  "example": 3},
+            },
+            "required": ["tipo", "fecha", "horas_estimadas"],
+        }
+    },
+    responses={
+        200: {"description": "Dentro del límite. Devuelve permite: true."},
+        422: {
+            "description": (
+                "Límite excedido. Devuelve status: limit_exceeded, "
+                "horas_usadas, horas_disponibles y suggestion con task_to_move_id y suggested_date."
+            )
+        },
+    }
+)(ValidarLimiteHorasView)
+
+# ── V2 ENDPOINTS ──────────────────────────────────────────────────────────────
+
+RegisterV2View = extend_schema(
+    tags=["Auth v2"],
+    summary="Registrar usuario (v2 — respuesta unificada + idempotencia)",
+    description="Igual que /auth/register/ pero con estructura { success, message, data } y protección contra doble envío (409).",
+    responses={
+        201: {"description": "Usuario creado."},
+        400: {"description": "Datos inválidos."},
+        409: {"description": "Petición duplicada detectada (doble clic)."},
+    }
+)(RegisterV2View)
+
+LoginV2View = extend_schema(
+    tags=["Auth v2"],
+    summary="Login (v2 — códigos HTTP semánticos)",
+    description="401 para credenciales incorrectas, 403 para cuenta desactivada, error_code interno para el front.",
+    responses={
+        200: {"description": "Login exitoso."},
+        401: {"description": "Correo o contraseña incorrectos."},
+        403: {"description": "Cuenta desactivada."},
+    }
+)(LoginV2View)
+
+ActivityCreateV2View = extend_schema(
+    tags=["Actividades v2"],
+    summary="Crear actividad (v2 — idempotencia + mensajes humanizados)",
+    description="Igual que POST /activities/ pero con idempotencia (409) y mensajes de error orientados a la solución.",
+    responses={
+        201: {"description": "Actividad creada."},
+        400: {"description": "Datos inválidos con mensaje humanizado."},
+        409: {"description": "Petición duplicada."},
+    }
+)(ActivityCreateV2View)
+
+ActivityListV2View = extend_schema(
+    tags=["Actividades v2"],
+    summary="Listar actividades pendientes (v2 — excluye completadas)",
+    description=(
+        "Solo devuelve actividades donde horas_trabajadas < horas_estimadas. "
+        "Usa ?incluir_completadas=true para verlas todas. "
+        "Incluye contadores total_pendientes y total_completadas."
+    ),
+    parameters=[
+        OpenApiParameter("incluir_completadas", OpenApiTypes.BOOL, OpenApiParameter.QUERY, required=False),
+    ],
+    responses={200: {"description": "Lista de actividades pendientes + contadores."}}
+)(ActivityListV2View)
+
+SubtaskCreateV2View = extend_schema(
+    tags=["Subtareas v2"],
+    summary="Crear subtarea (v2 — idempotencia + 403 explícito)",
+    responses={
+        201: {"description": "Subtarea creada."},
+        400: {"description": "Datos inválidos."},
+        403: {"description": "Sin permiso sobre la actividad padre."},
+        409: {"description": "Petición duplicada."},
+    }
+)(SubtaskCreateV2View)
+
+SubtaskPatchV2View = extend_schema(
+    tags=["Subtareas v2"],
+    summary="PATCH parcial de subtarea (v2 — SUM real desde BD + math desglosado)",
+    description=(
+        "Igual que /subtasks/{id}/patch/ pero usa _calcular_horas_dia() con SUM real "
+        "y devuelve payload math completo al exceder el límite."
+    ),
+    responses={
+        200: {"description": "Subtarea actualizada."},
+        422: {"description": "Límite excedido. Incluye math: { limite_diario, horas_asignadas, horas_intentadas, exceso_horas }."},
+    }
+)(SubtaskPatchV2View)
+
+ReprogramarActividadV2View = extend_schema(
+    tags=["Actividades v2"],
+    summary="Reprogramar actividad (v2 — mensajes orientados a la solución)",
+    responses={
+        200: {"description": "Reprogramada correctamente."},
+        400: {"description": "Fecha inválida o en el pasado — mensaje claro."},
+        404: {"description": "Actividad no encontrada."},
+    }
+)(ReprogramarActividadV2View)
+
+ValidarLimiteHorasV2View = extend_schema(
+    tags=["Validar v2"],
+    summary="Validar límite de horas (v2 — payload math desglosado)",
+    description=(
+        "Igual que /validar/limite-horas/ pero la respuesta de conflicto incluye "
+        "math: { limite_diario, horas_actividades, horas_subtareas, horas_asignadas, "
+        "horas_intentadas, total_resultante, exceso_horas, horas_disponibles }."
+    ),
+    responses={
+        200: {"description": "Dentro del límite. Incluye math completo."},
+        422: {"description": "Límite excedido. Math desglosado + suggestion."},
+    }
+)(ValidarLimiteHorasV2View)
+
+TareasHoyV2View = extend_schema(
+    tags=["Tareas v2"],
+    summary="Panel de hoy (v2 — excluye completadas + campo estado)",
+    description=(
+        "Igual que /tasks/hoy/ pero excluye actividades completadas por defecto. "
+        "Cada actividad incluye estado (sin_empezar/en_progreso/completada/sin_horas), "
+        "estado_label y porcentaje_completado."
+    ),
+    parameters=[
+        OpenApiParameter("incluir_completadas", OpenApiTypes.BOOL, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter("filtrar_por", OpenApiTypes.STR, OpenApiParameter.QUERY, required=False),
+    ],
+    responses={200: {"description": "Panel con grupos vencidas/hoy/proximas. Cada actividad trae campo estado."}}
+)(TareasHoyV2View)
+
+ActivityDistribuirView = extend_schema(
+    tags=["Actividades v2"],
+    summary="Crear actividad con distribución automática de horas",
+    description=(
+        "Si horas_estimadas <= límite diario: crea la actividad normal. "
+        "Si horas_estimadas > límite: distribuye automáticamente en bloques por días laborables "
+        "entre start_date y due_date, creando una Subtask por bloque. "
+        "Devuelve plan_distribucion con fecha, día de la semana y horas por bloque."
+    ),
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "title":           {"type": "string",  "example": "Proyecto final"},
+                "description":     {"type": "string",  "example": "Desarrollo completo"},
+                "due_date":        {"type": "string",  "example": "2026-05-30"},
+                "start_date":      {"type": "string",  "example": "2026-05-05"},
+                "difficulty":      {"type": "string",  "example": "alta"},
+                "activity_type":   {"type": "string",  "example": "project"},
+                "horas_estimadas": {"type": "number",  "example": 14},
+            },
+        }
+    },
+    responses={
+        201: {"description": "Actividad creada con subtareas distribuidas. Incluye plan_distribucion y horas_no_distribuidas."},
+        400: {"description": "Datos inválidos o falta start_date/due_date para la distribución."},
+        422: {"description": "Sin días laborables disponibles en el rango de fechas."},
+    }
+)(ActivityDistribuirView)
