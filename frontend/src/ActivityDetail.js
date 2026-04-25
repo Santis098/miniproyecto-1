@@ -216,7 +216,12 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const crearSubtask = async () => {
     if (!nuevoTitulo.trim())  { setErrorNuevo("Debe ingresar un título."); return; }
     if (nuevoTitulo.trim().length < 3) { setErrorNuevo("Mínimo 3 caracteres."); return; }
-    if (!nuevoFecha)          { setErrorNuevo("Selecciona una fecha."); return; }
+    if (!nuevoFecha)  { setErrorNuevo("Selecciona una fecha."); return; }
+    const hoyStr = new Date().toISOString().split('T')[0];
+    if (nuevoFecha < hoyStr) {
+      setErrorNuevo("La fecha no puede ser anterior a hoy.");
+      return;
+    }
     if (!nuevoHoras || parseFloat(nuevoHoras) <= 0) { setErrorNuevo("Las horas deben ser mayores a 0."); return; }
 
     // Validar fecha vs fecha de entrega de la actividad
@@ -269,6 +274,21 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ is_completed: !st.is_completed })
       });
+
+      // Actualizar horas_trabajadas según subtareas completadas
+      const horasSub = subtasks
+        .map(s => s.id === st.id ? { ...s, is_completed: !s.is_completed } : s)
+        .filter(s => s.is_completed)
+        .reduce((acc, s) => acc + (s.horasMeta || 0), 0);
+
+      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ horas_trabajadas: horasSub })
+      });
+      setHorasTrabajadas(horasSub);
+      if (onActualizado) onActualizado();
+
       cargarSubtasks();
     } catch (err) { console.error(err); }
     setLoadingToggle(null);
@@ -311,6 +331,11 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     if (!editandoTitulo.trim()) { setErrorEdicion("Debe ingresar un titulo."); return; }
     if (editandoTitulo.trim().length < 3) { setErrorEdicion("Mínimo 3 caracteres."); return; }
     if (!editandoFecha) { setErrorEdicion("Selecciona una fecha."); return; }
+    const hoyStr = new Date().toISOString().split('T')[0];
+    if (editandoFecha < hoyStr) {
+      setErrorEdicion("La fecha no puede ser anterior a hoy.");
+      return;
+    }
     if (!editandoHorasSub || parseFloat(editandoHorasSub) <= 0) { setErrorEdicion("Las horas deben ser mayores a 0."); return; }
 
     // Validar fecha vs fecha de entrega
@@ -513,6 +538,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                             autoFocus />
                           <input className="edit-input-sm" type="date"
                             value={editandoFecha}
+                            min={new Date().toISOString().split('T')[0]}
+                            max={actividad.due_date || undefined}
                             onChange={e => { setEditandoFecha(e.target.value); setErrorEdicion(""); }}
                           />
                           <input className="edit-input-sm" type="number" min="0.5" step="0.5" placeholder="Horas"
@@ -575,6 +602,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                   className="subtask-add-input"
                   type="date"
                   value={nuevoFecha}
+                  min={new Date().toISOString().split('T')[0]}
+                  max={actividad.due_date || undefined}
                   onChange={e => { setNuevoFecha(e.target.value); setErrorNuevo(""); }}
                 />
                 <input

@@ -5,12 +5,31 @@ import CreateActivity, { EditActivity } from '../CreateActivity';
 import ActivityDetail from '../ActivityDetail';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
+
+const hoy = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+const diaSiguiente = (f) => {
+  const d = new Date(f + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+
 const IconEdit = () => (
   <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>
 );
+
+const IconClock = () => (
+  <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <polyline points="12 6 12 12 16 14"/>
+  </svg>
+);
+
 const IconTrash = () => (
   <svg style={{width:15,height:15,display:'inline-block',verticalAlign:'middle'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"/>
@@ -58,14 +77,18 @@ const Dashboard = () => {
   const [eliminando, setEliminando]               = useState(false);
   const [exitoMsg, setExitoMsg]                   = useState('');
   const [editandoActividad, setEditandoActividad] = useState(null);
+  const [fechaDefecto, setFechaDefecto] = useState(null);
   const [asignaturasDisponibles, setAsignaturasDisponibles] = useState([]);
+  const [reprogramando, setReprogramando] = useState(null); // { actividad, nuevaFecha }
 
+  const [horasHoy, setHorasHoy] = useState(0);
   const [filtroHoy, setFiltroHoy]             = useState('Progreso');
   const [filtroProximas, setFiltroProximas]   = useState('Fecha');
   const [dropdownHoy, setDropdownHoy]         = useState(false);
   const [dropdownProximas, setDropdownProximas] = useState(false);
   const refHoy      = useRef(null);
   const refProximas = useRef(null);
+  const refFechaReprog = useRef(null);
 
   const [filtroAsignaturaHoy, setFiltroAsignaturaHoy]         = useState(null);
   const [filtroAsignaturaProximas, setFiltroAsignaturaProximas] = useState(null);
@@ -149,6 +172,9 @@ const Dashboard = () => {
       const json = await res.json();
       if (json.status === 'success' && json.data) {
         setTareasData(json.data);
+      const horasDelDia = (json.data.hoy || []).reduce((s, a) => s + (parseFloat(a.horas_estimadas) || 0), 0);
+        setHorasHoy(horasDelDia);
+
         cargarAsignaturas();
       } else {
         setTareasData({ vencidas: [], hoy: [], proximas: [], contadores: { hoy: 0, esta_semana: 0, atrasadas: 0 } });
@@ -175,6 +201,21 @@ const Dashboard = () => {
       setTimeout(() => setExitoMsg(''), 3000);
     } catch (err) { console.error(err); }
     setEliminando(false);
+  };
+
+  const guardarReprogramacion = async () => {
+    if (!reprogramando?.nuevaFecha) return;
+    try {
+      await fetch(`${API_BASE}/api/activities/${reprogramando.actividad.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ due_date: reprogramando.nuevaFecha, start_date: reprogramando.nuevaFecha })
+      });
+      setReprogramando(null);
+      cargarTareas();
+      setExitoMsg('Actividad reprogramada correctamente.');
+      setTimeout(() => setExitoMsg(''), 3000);
+    } catch (err) { console.error(err); }
   };
 
   const handleLogout = () => {
@@ -218,6 +259,29 @@ const Dashboard = () => {
                 {actividad.difficulty.charAt(0).toUpperCase() + actividad.difficulty.slice(1)}
               </span>
             )}
+
+            {(() => {
+              const completadas = 0; // sin subtareas en el dashboard, usamos horas
+              const hEst = actividad.horas_estimadas || 0;
+              const hTrab = actividad.horas_trabajadas || 0;
+              const pct = hEst > 0 ? Math.min(100, Math.round((hTrab / hEst) * 100)) : 0;
+              return (
+                <div style={{marginTop:6, width:'100%'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', fontSize:11, color:'#94a3b8', marginBottom:3}}>
+                    <span>Progreso</span>
+                    <span style={{fontWeight:600, color: pct >= 100 ? '#16a34a' : '#2563eb'}}>{pct}%</span>
+                  </div>
+                  <div style={{height:5, background:'#e2e8f0', borderRadius:99, overflow:'hidden'}}>
+                    <div style={{
+                      height:'100%', borderRadius:99,
+                      width:`${pct}%`,
+                      background: pct >= 100 ? '#16a34a' : 'linear-gradient(90deg,#2563eb,#60a5fa)',
+                      transition:'width 0.4s ease'
+                    }}/>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           <div style={{fontSize:12, color:'#aaa'}}>{actividad.horas_trabajadas||0}h / {actividad.horas_estimadas||0}h</div>
         </div>
@@ -226,6 +290,15 @@ const Dashboard = () => {
         {!soloEliminar && (
           <button className="card-btn-edit" title="Editar" onClick={e => { e.stopPropagation(); setEditandoActividad(actividad); }}><IconEdit /></button>
         )}
+        {!soloEliminar && (
+          <button className="card-btn-clock" title="Reprogramar fecha" onClick={e => { e.stopPropagation();
+            setReprogramando({ actividad, nuevaFecha: actividad.due_date || '' });
+            }}
+          >
+            <IconClock />
+          </button>
+        )}
+
         <button className="card-btn-del" title="Eliminar" onClick={e => { e.stopPropagation(); setConfirmarEliminar(actividad); }}><IconTrash /></button>
       </div>
     </div>
@@ -317,11 +390,11 @@ const Dashboard = () => {
 
   const contadores = tareasData?.contadores || { hoy: 0, esta_semana: 0, atrasadas: 0 };
 
-  const hoy = new Date();
-  hoy.setHours(0,0,0,0);
-  const finSemana = new Date(hoy); finSemana.setDate(hoy.getDate() + 7);
+  const hoyDate = new Date();
+  hoyDate.setHours(0,0,0,0);
+  const finSemana = new Date(hoyDate); finSemana.setDate(hoyDate.getDate() + 7);
   const proximasSemana = (tareasData?.proximas || []).filter(a => {
-    const d = new Date(a.due_date); return d >= hoy && d <= finSemana;
+    const d = new Date(a.due_date); return d >= hoyDate && d <= finSemana;
   }).length;
   const estaSemanaTotal = (tareasData?.hoy?.length || 0) + proximasSemana;
 
@@ -378,7 +451,7 @@ const Dashboard = () => {
             <p style={{ color: '#5e6c84', marginBottom: '30px' }}>
               ¡Todo está al día! Disfruta tu tiempo o comienza a planificar.
             </p>
-            <button className="create-btn-primary" onClick={() => setMostrarCrear(true)}>
+            <button className="create-btn-primary" onClick={() => { setFechaDefecto(null); setMostrarCrear(true); }}>
               Crear nueva actividad
             </button>
           </div>
@@ -401,6 +474,29 @@ const Dashboard = () => {
                 <div className="stat-desc">actividades programadas</div>
               </div>
             </div>
+
+            {horasHoy >= 6 && (
+              <div style={{
+                background: '#fff7ed',
+                border: '1.5px solid #fb923c',
+                borderRadius: 10,
+                padding: '12px 18px',
+                marginBottom: 20,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontSize: 14,
+                color: '#9a3412',
+              }}>
+                <span style={{fontSize: 20}}>⚠️</span>
+                <div>
+                  <strong>Límite diario alcanzado</strong>
+                  <span style={{marginLeft: 6}}>
+                    Ya tienes <strong>6h</strong> de trabajo programadas para hoy. No puedes agregar más actividades para este día.
+                  </span>
+                </div>
+              </div>
+            )}            
 
             <div className="sections-grid">
 
@@ -429,7 +525,19 @@ const Dashboard = () => {
                   <div className="section-header section-header-actions">
                     <span><span>🕒</span> Prioridades para Hoy</span>
                     <div className="section-acciones">
-                      <button className="create-btn" onClick={() => setMostrarCrear(true)} style={{marginTop: 0, padding: '6px 12px', fontSize: '13px'}}>+ Agregar</button>
+                      <button
+                        className="create-btn"
+                        onClick={() => { setFechaDefecto('hoy'); setMostrarCrear(true); }}
+                        disabled={horasHoy >= 6}
+                        title={horasHoy >= 6 ? 'Ya tienes 6h programadas para hoy' : ''}
+                        style={{
+                          marginTop: 0, padding: '6px 12px', fontSize: '13px',
+                          opacity: horasHoy >= 6 ? 0.45 : 1,
+                          cursor: horasHoy >= 6 ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        + Agregar
+                      </button>
                     </div>
                   </div>
                   <div className="filtros-container" style={{display: 'flex', gap: 10}}>
@@ -461,7 +569,13 @@ const Dashboard = () => {
                   <div className="section-header section-header-actions">
                     <span><span>📅</span> Próximas Actividades</span>
                     <div className="section-acciones">
-                      <button className="create-btn" onClick={() => setMostrarCrear(true)} style={{marginTop: 0, padding: '6px 12px', fontSize: '13px'}}>+ Agregar</button>
+                      <button
+                        className="create-btn"
+                        onClick={() => { setFechaDefecto('manana'); setMostrarCrear(true); }}
+                        style={{marginTop: 0, padding: '6px 12px', fontSize: '13px'}}
+                      >
+                        + Agregar
+                      </button>
                     </div>
                   </div>
                   <div className="filtros-container" style={{display: 'flex', gap: 10}}>
@@ -502,8 +616,13 @@ const Dashboard = () => {
 
       {mostrarCrear && (
         <CreateActivity
-          onClose={() => setMostrarCrear(false)}
-          onActivityCreated={() => { setMostrarCrear(false); cargarTareas(); }}
+          fechaInicial={
+            fechaDefecto === 'hoy' ? hoy() :
+            fechaDefecto === 'manana' ? diaSiguiente(hoy()) :
+            undefined
+          }
+          onClose={() => { setMostrarCrear(false); setFechaDefecto(null); }}
+          onActivityCreated={() => { setMostrarCrear(false); setFechaDefecto(null); cargarTareas(); }}
         />
       )}
 
@@ -525,6 +644,36 @@ const Dashboard = () => {
               <button className="confirm-btn-cancelar-dash" onClick={() => setConfirmarEliminar(null)} disabled={eliminando}>Cancelar</button>
               <button className="confirm-btn-eliminar-dash" onClick={() => eliminarActividad(confirmarEliminar)} disabled={eliminando}>
                 {eliminando ? <IconSpinner /> : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reprogramando && (
+        <div className="confirm-overlay-dash">
+          <div className="confirm-modal-dash">
+            <h3>Reprogramar actividad</h3>
+            <p>Selecciona la nueva fecha para <strong>"{reprogramando.actividad.title}"</strong>:</p>
+            <input
+              type="date"
+              style={{width:'100%', padding:'8px 12px', border:'1.5px solid #2563eb', borderRadius:8, fontSize:14, marginTop:8, boxSizing:'border-box'}}
+              value={reprogramando.nuevaFecha}
+              onChange={e => setReprogramando(r => ({ ...r, nuevaFecha: e.target.value }))}
+              min={new Date().toISOString().split('T')[0]}
+            />
+            <p className="confirm-aviso-dash" style={{marginTop:10}}>
+              La actividad se moverá a la nueva fecha seleccionada.
+            </p>
+            <div className="confirm-botones-dash">
+              <button className="confirm-btn-cancelar-dash" onClick={() => setReprogramando(null)}>Cancelar</button>
+              <button
+                className="confirm-btn-eliminar-dash"
+                style={{background:'#2563eb'}}
+                onClick={guardarReprogramacion}
+                disabled={!reprogramando.nuevaFecha || reprogramando.nuevaFecha < new Date().toISOString().split('T')[0]}
+              >
+                ✓ Confirmar
               </button>
             </div>
           </div>

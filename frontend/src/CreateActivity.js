@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './CreateActivity.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://miniproyecto-1-x936.onrender.com';
@@ -22,8 +22,7 @@ const formatFecha = (f) => {
 const LIMITE_HORAS_DIA = 6;
 
 /**
- * Consulta la API y devuelve las horas ya ocupadas para una fecha dada.
- * excluirId: id de la actividad que se está editando (para no contarse a sí misma)
+ * Suma las horas de actividades para una fecha dada, excluyendo una actividad por id.
  */
 const consultarHorasOcupadas = async (fecha, token, excluirId = null) => {
   try {
@@ -36,8 +35,34 @@ const consultarHorasOcupadas = async (fecha, token, excluirId = null) => {
       .filter(a => a.due_date === fecha && a.id !== excluirId)
       .reduce((sum, a) => sum + (parseFloat(a.horas_estimadas) || 0), 0);
   } catch {
-    return 0; // Si falla la consulta, no bloqueamos
+    return 0;
   }
+};
+
+/**
+ * Dado una fecha YYYY-MM-DD, devuelve el día siguiente en YYYY-MM-DD.
+ */
+const diaSiguiente = (fechaStr) => {
+  const d = new Date(fechaStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+/**
+ * Busca la próxima fecha (desde el día siguiente) que tenga cupo para horasNecesarias.
+ * Busca hasta 30 días hacia adelante.
+ */
+const buscarProximaFechaDisponible = async (fechaBase, horasNecesarias, token, excluirId = null) => {
+  let candidata = diaSiguiente(fechaBase);
+  for (let i = 0; i < 30; i++) {
+    const ocupadas = await consultarHorasOcupadas(candidata, token, excluirId);
+    if (ocupadas + horasNecesarias <= LIMITE_HORAS_DIA) return candidata;
+    candidata = diaSiguiente(candidata);
+  }
+  return null;
 };
 
 // ─── Iconos ───────────────────────────────────────────────────
@@ -63,15 +88,217 @@ const IconSpinner = () => (
 );
 
 // ─────────────────────────────────────────────────────────────
+// ALERTA DE SOBRECARGA MEJORADA
+// Ahora soporta tres modos:
+//   1. overload_simple   → superó 6h, la actividad ≤ 6h (comportamiento anterior)
+//   2. overload_split    → la actividad en sí supera 6h, propone dividirla
+//   3. overload_reprog   → día lleno y actividad ≤ 6h, mover todo al próximo día
+// ─────────────────────────────────────────────────────────────
+function AlertaSobrecarga({ data, onReprogramar, onElegirFecha, onDividir, cargando }) {
+  const { modo, horasOcupadas, horasActividad, horasBloque1, horasBloque2, fechaBloque1, fechaBloque2 } = data;
+
+  // ── MODO: la actividad por sí sola supera 6h → proponer división
+  if (modo === 'overload_split') {
+    return (
+      <div style={{
+        background: '#f0f9ff',
+        border: '1.5px solid #3b82f6',
+        borderRadius: 12,
+        padding: '16px 18px',
+        margin: '0 0 12px 0',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <span style={{ fontSize: 20, lineHeight: 1 }}>✂️</span>
+          <div>
+            <div style={{ fontWeight: 700, color: '#1e40af', fontSize: 14, marginBottom: 4 }}>
+              Actividad mayor a {LIMITE_HORAS_DIA}h
+            </div>
+            <div style={{ color: '#1e3a8a', fontSize: 13, lineHeight: 1.5 }}>
+              Esta actividad requiere <strong>{horasActividad}h</strong> pero el límite diario es <strong>{LIMITE_HORAS_DIA}h</strong>.
+              Te proponemos dividirla en dos partes:
+            </div>
+            <div style={{
+              marginTop: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              background: '#dbeafe',
+              borderRadius: 8,
+              padding: '10px 12px',
+              fontSize: 13,
+            }}>
+              <div>
+                📅 <strong>Parte 1:</strong> {horasBloque1}h → {formatFecha(fechaBloque1)}
+              </div>
+              <div>
+                📅 <strong>Parte 2:</strong> {horasBloque2}h → {formatFecha(fechaBloque2) || '⏳ buscando fecha...'}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            type="button"
+            onClick={onDividir}
+            disabled={cargando || !fechaBloque2}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '9px 0',
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: (cargando || !fechaBloque2) ? 'not-allowed' : 'pointer',
+              opacity: (cargando || !fechaBloque2) ? 0.7 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            {cargando ? '⏳ Creando actividades...' : `✂️ Dividir y programar las dos partes`}
+          </button>
+          <button
+            type="button"
+            onClick={onElegirFecha}
+            disabled={cargando}
+            style={{
+              background: 'transparent',
+              color: '#1e40af',
+              border: '1.5px solid #3b82f6',
+              borderRadius: 8,
+              padding: '9px 0',
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            🗓️ Ajustar horas manualmente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── MODO: día ocupado, actividad ≤ 6h → reprogramar o elegir fecha
+  return (
+    <div style={{
+      background: '#fff8f0',
+      border: '1.5px solid #f59e0b',
+      borderRadius: 12,
+      padding: '16px 18px',
+      margin: '0 0 12px 0',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span style={{ fontSize: 20, lineHeight: 1 }}>⚠️</span>
+        <div>
+          <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14, marginBottom: 4 }}>
+            Alerta de sobrecarga
+          </div>
+          <div style={{ color: '#78350f', fontSize: 13, lineHeight: 1.5 }}>
+            Ya tienes <strong>{horasOcupadas}h</strong> programadas para ese día.
+            Superaste el límite diario de <strong>{LIMITE_HORAS_DIA}h</strong>.<br/>
+            Para mantener tu productividad, te recomendamos reprogramar la actividad.
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button
+          type="button"
+          onClick={onReprogramar}
+          disabled={cargando}
+          style={{
+            background: '#f59e0b',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            padding: '9px 0',
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: cargando ? 'not-allowed' : 'pointer',
+            opacity: cargando ? 0.7 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+          }}
+        >
+          {cargando ? '⏳ Buscando fecha...' : '📅 Reprogramar para el próximo día disponible'}
+        </button>
+        <button
+          type="button"
+          onClick={onElegirFecha}
+          disabled={cargando}
+          style={{
+            background: 'transparent',
+            color: '#92400e',
+            border: '1.5px solid #f59e0b',
+            borderRadius: 8,
+            padding: '9px 0',
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+          }}
+        >
+          🗓️ Elegir otra fecha
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// HOOK: Verificar si el día de hoy ya tiene 6h completas
+// Uso: const { diaLleno, horasHoy } = useDiaHoyLleno(token)
+// Expórtalo para usarlo en el componente padre que contiene el
+// botón "Agregar actividad".
+// ─────────────────────────────────────────────────────────────
+export function useDiaHoyLleno(token) {
+  const [diaLleno, setDiaLleno] = useState(false);
+  const [horasHoy, setHorasHoy] = useState(0);
+  const [cargando, setCargando] = useState(true);
+
+  const verificar = async () => {
+    if (!token) { setCargando(false); return; }
+    setCargando(true);
+    const horas = await consultarHorasOcupadas(hoy(), token);
+    setHorasHoy(horas);
+    setDiaLleno(horas >= LIMITE_HORAS_DIA);
+    setCargando(false);
+  };
+
+  useEffect(() => {
+    verificar();
+  }, [token]);
+
+  return { diaLleno, horasHoy, cargando, refrescar: verificar };
+}
+
+// ─────────────────────────────────────────────────────────────
 // CREAR ACTIVIDAD
 // ─────────────────────────────────────────────────────────────
-function CreateActivity({ onClose, onActivityCreated }) {
+function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
   const [titulo, setTitulo]             = useState('');
   const [descripcion, setDescripcion]   = useState('');
   const [asignatura, setAsignatura]     = useState('');
   const [tipo, setTipo]                 = useState('');
   const [dificultad, setDificultad]     = useState('');
-  const [fecha, setFecha]               = useState('');
+  const [fecha, setFecha] = useState(fechaInicial || '');
   const [horasEstimadas, setHorasEstimadas] = useState('');
   const [subtasks, setSubtasks]         = useState([]);
   const [nuevoSub, setNuevoSub]         = useState('');
@@ -85,26 +312,144 @@ function CreateActivity({ onClose, onActivityCreated }) {
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
   const [success, setSuccess]           = useState(false);
+  const [alertaSobrecarga, setAlertaSobrecarga] = useState(null);
+  const [cargandoReprogramar, setCargandoReprogramar] = useState(false);
+  const fechaInputRef = useRef(null);
+  const mensajeRef = useRef(null);
 
   const TODAY = hoy();
+
+  // ── Scroll automático al mensaje cuando aparece error o alerta ─
+  useEffect(() => {
+    if ((error || alertaSobrecarga) && mensajeRef.current) {
+      mensajeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [error, alertaSobrecarga]);
+
+  // ── Calcula horas ya asignadas a subtareas ──────────────────
+  const horasSubtareas = subtasks.reduce((sum, st) => sum + (parseFloat(st.horas) || 0), 0);
+  const horasDisponiblesParaSubtareas = Math.max(0, (parseFloat(horasEstimadas) || 0) - horasSubtareas);
+
+  // ─── HANDLER: Reprogramar al próximo día disponible ─────────
+  const handleReprogramarCreate = async () => {
+    if (!alertaSobrecarga) return;
+    setCargandoReprogramar(true);
+    const token = localStorage.getItem('token');
+    const proxima = await buscarProximaFechaDisponible(fecha, parseFloat(horasEstimadas), token);
+    setCargandoReprogramar(false);
+    if (!proxima) {
+      setAlertaSobrecarga(null);
+      setError('No se encontró una fecha disponible en los próximos 30 días.');
+      return;
+    }
+    setFecha(proxima);
+    setAlertaSobrecarga(null);
+    setTimeout(() => manejarEnvioConFecha(proxima), 50);
+  };
+
+  // ─── HANDLER: Elegir fecha manualmente ──────────────────────
+  const handleElegirFechaCreate = () => {
+    setAlertaSobrecarga(null);
+    setFecha('');
+    setTimeout(() => fechaInputRef.current?.showPicker?.() || fechaInputRef.current?.click(), 50);
+  };
+
+  // ─── HANDLER: Dividir actividad en dos bloques ──────────────
+  // Crea la actividad parte-1 en fechaBloque1 y parte-2 en fechaBloque2
+  const handleDividirActividad = async () => {
+    if (!alertaSobrecarga || alertaSobrecarga.modo !== 'overload_split') return;
+    const { horasBloque1, horasBloque2, fechaBloque1, fechaBloque2 } = alertaSobrecarga;
+    if (!fechaBloque2) return;
+
+    setCargandoReprogramar(true);
+    const token = localStorage.getItem('token');
+    const asignaturaId = await resolverAsignatura(asignatura, token);
+
+    try {
+      // Crear parte 1
+      const body1 = {
+        title: `${titulo} (Parte 1)`,
+        description: descripcion,
+        start_date: fechaBloque1, due_date: fechaBloque1,
+        activity_type: tipo, difficulty: dificultad,
+        horas_estimadas: horasBloque1,
+        ...(asignaturaId && { asignatura: asignaturaId }),
+      };
+      const res1 = await fetch(API_BASE + '/api/activities/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body1),
+      });
+
+      // Crear parte 2
+      const body2 = {
+        title: `${titulo} (Parte 2)`,
+        description: descripcion,
+        start_date: fechaBloque2, due_date: fechaBloque2,
+        activity_type: tipo, difficulty: dificultad,
+        horas_estimadas: horasBloque2,
+        ...(asignaturaId && { asignatura: asignaturaId }),
+      };
+      const res2 = await fetch(API_BASE + '/api/activities/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body2),
+      });
+
+      if (res1.status === 201 && res2.status === 201) {
+        // Si hay subtareas, agregarlas a la parte 1
+        const data1 = await res1.json();
+        const actividadId1 = data1?.data?.id;
+        if (actividadId1 && subtasks.length > 0) {
+          await Promise.all(subtasks.map(st =>
+            fetch(API_BASE + '/api/subtasks/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ title: st.titulo, activity: actividadId1 })
+            })
+          ));
+        }
+        setAlertaSobrecarga(null);
+        setSuccess(true);
+        setCargandoReprogramar(false);
+        setTimeout(() => { if (onActivityCreated) onActivityCreated(); if (onClose) onClose(); }, 1500);
+      } else {
+        setError('Error al crear una de las partes. Intenta de nuevo.');
+        setCargandoReprogramar(false);
+      }
+    } catch {
+      setError('Error de conexión al dividir la actividad.');
+      setCargandoReprogramar(false);
+    }
+  };
 
   const agregarSubtask = () => {
     if (!nuevoSub.trim())   { setErrorSub('Ingresa el título de la subtarea.'); return; }
     if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
     if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha para la subtarea.'); return; }
-
-    // ✅ FIX: No permitir fecha pasada
     if (nuevoSubFecha < TODAY) {
       setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
       return;
     }
     if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
-
-    // Validar que la fecha de la subtarea no supere la fecha de la actividad
     if (fecha && nuevoSubFecha > fecha) {
       setErrorSub(`La fecha de la subtarea no puede ser posterior a la fecha de la actividad (${formatFecha(fecha)}).`);
       return;
     }
+
+    // ── NUEVA VALIDACIÓN: horas de subtareas no pueden superar las de la actividad
+    const horasYaAsignadas = subtasks.reduce((sum, st) => sum + (parseFloat(st.horas) || 0), 0);
+    const horasNuevas = parseFloat(nuevoSubHoras);
+    const horasPadre = parseFloat(horasEstimadas) || 0;
+    if (horasPadre > 0 && horasYaAsignadas + horasNuevas > horasPadre) {
+      const disponibles = (horasPadre - horasYaAsignadas).toFixed(1);
+      setErrorSub(
+        `Las subtareas no pueden superar las ${horasPadre}h de la actividad. ` +
+        `Quedan ${disponibles}h disponibles.`
+      );
+      return;
+    }
+
     setSubtasks([...subtasks, { titulo: nuevoSub.trim(), fecha: nuevoSubFecha, horas: parseFloat(nuevoSubHoras), id: Date.now() }]);
     setNuevoSub(''); setNuevoSubFecha(''); setNuevoSubHoras(''); setErrorSub('');
   };
@@ -120,14 +465,27 @@ function CreateActivity({ onClose, onActivityCreated }) {
 
   const guardarEdicionSub = (id) => {
     if (!editandoSubTitulo.trim() || !editandoSubFecha || !editandoSubHoras) return;
-
-    // ✅ FIX: No permitir fecha pasada en edición de subtarea
     if (editandoSubFecha < TODAY) {
       setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
       return;
     }
     if (fecha && editandoSubFecha > fecha) {
       setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFecha(fecha)}).`);
+      return;
+    }
+
+    // ── NUEVA VALIDACIÓN en edición: horas totales de subtareas no superan la actividad
+    const horasOtras = subtasks
+      .filter(s => s.id !== id)
+      .reduce((sum, st) => sum + (parseFloat(st.horas) || 0), 0);
+    const horasPadre = parseFloat(horasEstimadas) || 0;
+    const horasEditadas = parseFloat(editandoSubHoras);
+    if (horasPadre > 0 && horasOtras + horasEditadas > horasPadre) {
+      const disponibles = (horasPadre - horasOtras).toFixed(1);
+      setErrorSub(
+        `Las subtareas no pueden superar las ${horasPadre}h de la actividad. ` +
+        `Quedan ${disponibles}h disponibles para esta subtarea.`
+      );
       return;
     }
 
@@ -157,52 +515,23 @@ function CreateActivity({ onClose, onActivityCreated }) {
     } catch { return null; }
   };
 
-  const manejarEnvio = async () => {
-    if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
-    if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
-    if (!descripcion.trim())      { setError('Debe ingresar una descripción.'); return; }
-    if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
-    if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
-    if (!fecha)                   { setError('Selecciona una fecha de actividad.'); return; }
-
-    // ✅ FIX: No permitir fecha de actividad pasada
-    if (fecha < TODAY) {
-      setError(`La fecha de la actividad no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
-      return;
-    }
-    if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
-
-    // ✅ VALIDACIÓN 6H: Consultar horas ya ocupadas en esa fecha
-    const token = localStorage.getItem('token');
-    const horasOcupadas = await consultarHorasOcupadas(fecha, token);
-    const horasNuevas   = parseFloat(horasEstimadas);
-    const horasDisponibles = LIMITE_HORAS_DIA - horasOcupadas;
-
-    if (horasOcupadas + horasNuevas > LIMITE_HORAS_DIA) {
-      setError(
-        `El día ${formatFecha(fecha)} ya tiene ${horasOcupadas}h agendadas de un máximo de ${LIMITE_HORAS_DIA}h. ` +
-        `Solo quedan ${horasDisponibles > 0 ? horasDisponibles + 'h disponibles' : '0h disponibles'}. ` +
-        `Elige otra fecha o reduce las horas estimadas.`
-      );
-      return;
-    }
-
+  // Envío real a la API con una fecha específica
+  const manejarEnvioConFecha = async (fechaFinal) => {
     setError(''); setLoading(true);
+    const token = localStorage.getItem('token');
     const asignaturaId = await resolverAsignatura(asignatura, token);
-
     try {
       const res = await fetch(API_BASE + '/api/activities/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           title: titulo, description: descripcion,
-          start_date: fecha, due_date: fecha,
+          start_date: fechaFinal, due_date: fechaFinal,
           activity_type: tipo, difficulty: dificultad,
           horas_estimadas: parseFloat(horasEstimadas),
           ...(asignaturaId && { asignatura: asignaturaId }),
         }),
       });
-
       if (res.status === 201) {
         const data = await res.json();
         const actividadId = data?.data?.id;
@@ -225,10 +554,86 @@ function CreateActivity({ onClose, onActivityCreated }) {
         else setError('Datos incorrectos. Verifica el formulario.');
         setLoading(false);
       }
-    } catch (err) {
+    } catch {
       setError('Error de conexión con el servidor.');
       setLoading(false);
     }
+  };
+
+  const manejarEnvio = async () => {
+    if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
+    if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
+    if (!descripcion.trim())      { setError('Debe ingresar una descripción.'); return; }
+    if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
+    if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
+    if (!fecha)                   { setError('Selecciona una fecha de actividad.'); return; }
+    if (fecha < TODAY) {
+      setError(`La fecha de la actividad no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
+    if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
+
+    const horas = parseFloat(horasEstimadas);
+    const token = localStorage.getItem('token');
+
+    // ── CASO 1: La actividad por sí sola supera 6h → proponer división ──
+    if (horas > LIMITE_HORAS_DIA) {
+      const horasBloque1 = LIMITE_HORAS_DIA;
+      const horasBloque2 = parseFloat((horas - LIMITE_HORAS_DIA).toFixed(2));
+      const fechaBloque1 = fecha;
+
+      // Verificar si el día elegido tiene cupo para bloque1
+      const horasOcupadas1 = await consultarHorasOcupadas(fechaBloque1, token);
+      let fechaRealBloque1 = fechaBloque1;
+      let horasRealBloque1 = horasBloque1;
+
+      if (horasOcupadas1 + horasBloque1 > LIMITE_HORAS_DIA) {
+        // No cabe ni el bloque 1, ajustar cuántas caben hoy
+        const disponibleHoy = LIMITE_HORAS_DIA - horasOcupadas1;
+        if (disponibleHoy > 0) {
+          horasRealBloque1 = parseFloat(disponibleHoy.toFixed(2));
+        } else {
+          // Día lleno, buscar próximo disponible para todo
+          const proxima = await buscarProximaFechaDisponible(fecha, horasBloque1, token);
+          setAlertaSobrecarga({
+            modo: 'overload_split',
+            horasActividad: horas,
+            horasBloque1: horasBloque1,
+            horasBloque2: horasBloque2,
+            fechaBloque1: proxima || fecha,
+            fechaBloque2: null,
+          });
+          // Buscar también el bloque2
+          if (proxima) {
+            const prox2 = await buscarProximaFechaDisponible(proxima, horasBloque2, token);
+            setAlertaSobrecarga(prev => ({ ...prev, fechaBloque2: prox2 }));
+          }
+          return;
+        }
+      }
+
+      // Buscar fecha para bloque 2
+      const fechaBloque2 = await buscarProximaFechaDisponible(fechaRealBloque1, horasBloque2 || horas - horasRealBloque1, token);
+
+      setAlertaSobrecarga({
+        modo: 'overload_split',
+        horasActividad: horas,
+        horasBloque1: horasRealBloque1,
+        horasBloque2: parseFloat((horas - horasRealBloque1).toFixed(2)),
+        fechaBloque1: fechaRealBloque1,
+        fechaBloque2,
+      });
+      return;
+    }
+
+    // ── CASO 2: La actividad cabe en 6h pero el día está lleno → reprogramar ──
+    const horasOcupadas = await consultarHorasOcupadas(fecha, token);
+    if (horasOcupadas + horas > LIMITE_HORAS_DIA) {
+      setAlertaSobrecarga({ modo: 'overload_reprog', horasOcupadas });
+      return;
+    }
+
+    await manejarEnvioConFecha(fecha);
   };
 
   return (
@@ -239,7 +644,18 @@ function CreateActivity({ onClose, onActivityCreated }) {
           <button className="ca-cerrar" onClick={onClose}>✕</button>
         </div>
         {success && <div className="ca-mensaje ca-exito">✅ Actividad creada exitosamente. Cerrando...</div>}
-        {error   && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
+        <div ref={mensajeRef}>
+          {alertaSobrecarga && (
+            <AlertaSobrecarga
+              data={alertaSobrecarga}
+              cargando={cargandoReprogramar}
+              onReprogramar={handleReprogramarCreate}
+              onElegirFecha={handleElegirFechaCreate}
+              onDividir={handleDividirActividad}
+            />
+          )}
+          {error && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
+        </div>
         {!success && (
           <div className="ca-form">
             <div className="ca-campo">
@@ -283,13 +699,12 @@ function CreateActivity({ onClose, onActivityCreated }) {
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Fecha de actividad *</label>
-                {/* ✅ FIX: min=TODAY bloquea fechas pasadas en el calendario */}
-                <input className="ca-input" type="date" min={TODAY} value={fecha} onChange={e => setFecha(e.target.value)} />
+                <input ref={fechaInputRef} className="ca-input" type="date" min={TODAY} value={fecha} onChange={e => { setFecha(e.target.value); setAlertaSobrecarga(null); }} />
               </div>
               <div className="ca-campo">
                 <label className="ca-label">Horas estimadas *</label>
                 <div className="ca-horas-wrapper">
-                  <input className="ca-input ca-input-horas" type="number" min="0" step="1" placeholder="00 h" value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
+                  <input className="ca-input ca-input-horas" type="number" min="0" step="1" placeholder="00 h" value={horasEstimadas} onChange={e => { setHorasEstimadas(e.target.value); setAlertaSobrecarga(null); }} />
                 </div>
               </div>
             </div>
@@ -298,6 +713,8 @@ function CreateActivity({ onClose, onActivityCreated }) {
               subtasks={subtasks}
               fechaActividad={fecha}
               today={TODAY}
+              horasPadre={parseFloat(horasEstimadas) || 0}
+              horasSubtareas={horasSubtareas}
               nuevoSub={nuevoSub} setNuevoSub={setNuevoSub}
               nuevoSubFecha={nuevoSubFecha} setNuevoSubFecha={setNuevoSubFecha}
               nuevoSubHoras={nuevoSubHoras} setNuevoSubHoras={setNuevoSubHoras}
@@ -330,11 +747,14 @@ export default CreateActivity;
 
 // ─────────────────────────────────────────────────────────────
 // COMPONENTE REUTILIZABLE: EDITOR DE SUBTAREAS
+// Ahora recibe horasPadre y horasSubtareas para mostrar el cupo
 // ─────────────────────────────────────────────────────────────
 function SubtareasEditor({
   subtasks,
   fechaActividad,
   today,
+  horasPadre,          // ← NUEVO: horas de la actividad padre
+  horasSubtareas,      // ← NUEVO: suma de horas de las subtareas actuales
   nuevoSub, setNuevoSub,
   nuevoSubFecha, setNuevoSubFecha,
   nuevoSubHoras, setNuevoSubHoras,
@@ -345,12 +765,46 @@ function SubtareasEditor({
   editandoSubHoras, setEditandoSubHoras,
   onAgregar, onEliminar, onIniciarEdicion, onGuardarEdicion, onCancelarEdicion
 }) {
-  // El máximo seleccionable en el calendario es la fecha de la actividad (si existe)
   const maxFecha = fechaActividad || undefined;
+  const horasDisponibles = horasPadre > 0 ? Math.max(0, horasPadre - horasSubtareas) : null;
+  const porcentajeUsado = horasPadre > 0 ? Math.min(100, (horasSubtareas / horasPadre) * 100) : 0;
 
   return (
     <div className="ca-campo">
-      <label className="ca-label">Subtareas <span style={{color:'#aaa', fontWeight:400}}>(opcional)</span></label>
+      <label className="ca-label">
+        Subtareas <span style={{color:'#aaa', fontWeight:400}}>(opcional)</span>
+      </label>
+
+      {/* ── NUEVO: Barra de progreso de horas de subtareas ─── */}
+      {horasPadre > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#555', marginBottom: 4 }}>
+            <span>Horas asignadas a subtareas</span>
+            <span style={{ fontWeight: 600, color: horasDisponibles === 0 ? '#c0392b' : '#2563eb' }}>
+              {horasSubtareas.toFixed(1)}h / {horasPadre}h
+              {horasDisponibles !== null && (
+                <span style={{ color: '#777', fontWeight: 400 }}>
+                  {' '}({horasDisponibles.toFixed(1)}h disponibles)
+                </span>
+              )}
+            </span>
+          </div>
+          <div style={{ background: '#e5e7eb', borderRadius: 99, height: 6, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${porcentajeUsado}%`,
+              background: porcentajeUsado >= 100 ? '#ef4444' : porcentajeUsado >= 80 ? '#f59e0b' : '#3b82f6',
+              borderRadius: 99,
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
+          {horasDisponibles === 0 && (
+            <p style={{ fontSize: 12, color: '#c0392b', marginTop: 4, fontWeight: 600 }}>
+              ⛔ Límite de horas alcanzado. No puedes agregar más subtareas.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="ca-subtask-cols-header">
         <span>Título</span>
@@ -368,7 +822,6 @@ function SubtareasEditor({
                   <div className="ca-subtask-edit-grid">
                     <input className="ca-input" type="text" placeholder="Título"
                       value={editandoSubTitulo} onChange={e => setEditandoSubTitulo(e.target.value)} autoFocus />
-                    {/* ✅ FIX: min y max en el calendario de edición */}
                     <input className="ca-input" type="date"
                       min={today} max={maxFecha}
                       value={editandoSubFecha} onChange={e => setEditandoSubFecha(e.target.value)} />
@@ -398,24 +851,36 @@ function SubtareasEditor({
         </ul>
       )}
 
+      {/* ── Input de nueva subtarea (desactivado si cupo = 0) ── */}
       <div className="ca-subtask-input-grid">
         <input className="ca-input" type="text" placeholder="Título subtarea"
           value={nuevoSub}
+          disabled={horasPadre > 0 && horasDisponibles === 0}
           onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAgregar(); } }}
         />
-        {/* ✅ FIX: min y max en el calendario de nueva subtarea */}
         <input className="ca-input" type="date"
           min={today} max={maxFecha}
+          disabled={horasPadre > 0 && horasDisponibles === 0}
           value={nuevoSubFecha}
           onChange={e => { setNuevoSubFecha(e.target.value); setErrorSub(''); }}
         />
-        <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="Horas"
+        <input className="ca-input" type="number" min="0.5" step="0.5"
+          placeholder={horasPadre > 0 && horasDisponibles !== null ? `máx ${horasDisponibles.toFixed(1)}h` : 'Horas'}
+          disabled={horasPadre > 0 && horasDisponibles === 0}
           value={nuevoSubHoras}
           onChange={e => { setNuevoSubHoras(e.target.value); setErrorSub(''); }}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAgregar(); } }}
         />
-        <button className="ca-subtask-add-btn" type="button" onClick={onAgregar}>+ Agregar</button>
+        <button
+          className="ca-subtask-add-btn"
+          type="button"
+          onClick={onAgregar}
+          disabled={horasPadre > 0 && horasDisponibles === 0}
+          style={{ opacity: (horasPadre > 0 && horasDisponibles === 0) ? 0.5 : 1, cursor: (horasPadre > 0 && horasDisponibles === 0) ? 'not-allowed' : 'pointer' }}
+        >
+          + Agregar
+        </button>
       </div>
       {errorSub && <p className="ca-sub-error">{errorSub}</p>}
     </div>
@@ -435,6 +900,10 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
   const [success, setSuccess]           = useState(false);
+  const [alertaSobrecarga, setAlertaSobrecarga] = useState(null);
+  const [cargandoReprogramar, setCargandoReprogramar] = useState(false);
+  const fechaInputRef = useRef(null);
+  const mensajeRef = useRef(null);
 
   const [subtasks, setSubtasks]         = useState([]);
   const [loadingSubs, setLoadingSubs]   = useState(true);
@@ -452,9 +921,38 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
   const token = localStorage.getItem('token');
   const TODAY = hoy();
 
+  // ── Scroll automático al mensaje cuando aparece error o alerta ─
   useEffect(() => {
-    cargarSubtasks();
-  }, []);
+    if ((error || alertaSobrecarga) && mensajeRef.current) {
+      mensajeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [error, alertaSobrecarga]);
+
+  // Horas de subtareas en edición
+  const horasSubtareasEdit = subtasks.reduce((sum, st) => sum + (parseFloat(st.horas) || 0), 0);
+
+  const handleReprogramarEdit = async () => {
+    if (!alertaSobrecarga) return;
+    setCargandoReprogramar(true);
+    const proxima = await buscarProximaFechaDisponible(fecha, parseFloat(horasEstimadas), token, actividad.id);
+    setCargandoReprogramar(false);
+    if (!proxima) {
+      setAlertaSobrecarga(null);
+      setError('No se encontró una fecha disponible en los próximos 30 días.');
+      return;
+    }
+    setFecha(proxima);
+    setAlertaSobrecarga(null);
+    setTimeout(() => manejarEnvioConFechaEdit(proxima), 50);
+  };
+
+  const handleElegirFechaEdit = () => {
+    setAlertaSobrecarga(null);
+    setFecha('');
+    setTimeout(() => fechaInputRef.current?.showPicker?.() || fechaInputRef.current?.click(), 50);
+  };
+
+  useEffect(() => { cargarSubtasks(); }, []);
 
   const cargarSubtasks = async () => {
     setLoadingSubs(true);
@@ -464,18 +962,23 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
       });
       const json = await res.json();
       const lista = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-
-      // ✅ FIX: Campos confirmados del servidor: "fecha" y "horas_estimadas"
       setSubtasks(
         lista
           .filter(st => st.activity === actividad.id)
-          .map(st => ({
-            id: st.id,
-            titulo: st.title || '',
-            fecha: st.fecha || '',          // ← campo real del servidor
-            horas: st.horas_estimadas || 0, // ← campo real del servidor
-            esServidor: true,
-          }))
+          .map(st => {
+            let meta = {};
+            try {
+              const stored = JSON.parse(localStorage.getItem(`subtask_meta_${actividad.id}`) || '{}');
+              meta = stored[st.id] || {};
+            } catch {}
+            return {
+              id: st.id,
+              titulo: st.title || '',
+              fecha: meta.fecha || st.fecha || '',
+              horas: meta.horas || st.horas_estimadas || 0,
+              esServidor: true,
+            };
+          })
       );
     } catch (err) { console.error(err); }
     setLoadingSubs(false);
@@ -485,16 +988,25 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
     if (!nuevoSub.trim())   { setErrorSub('Ingresa el título de la subtarea.'); return; }
     if (nuevoSub.trim().length < 3) { setErrorSub('Mínimo 3 caracteres.'); return; }
     if (!nuevoSubFecha)     { setErrorSub('Selecciona una fecha.'); return; }
-
-    // ✅ FIX: No permitir fecha pasada
     if (nuevoSubFecha < TODAY) {
       setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
       return;
     }
     if (!nuevoSubHoras || parseFloat(nuevoSubHoras) <= 0) { setErrorSub('Las horas deben ser mayores a 0.'); return; }
-
     if (fecha && nuevoSubFecha > fecha) {
       setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFecha(fecha)}).`);
+      return;
+    }
+
+    // ── NUEVA VALIDACIÓN de horas en EditActivity ────────────
+    const horasPadre = parseFloat(horasEstimadas) || 0;
+    const horasNuevas = parseFloat(nuevoSubHoras);
+    if (horasPadre > 0 && horasSubtareasEdit + horasNuevas > horasPadre) {
+      const disponibles = (horasPadre - horasSubtareasEdit).toFixed(1);
+      setErrorSub(
+        `Las subtareas no pueden superar las ${horasPadre}h de la actividad. ` +
+        `Quedan ${disponibles}h disponibles.`
+      );
       return;
     }
 
@@ -505,11 +1017,20 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
         body: JSON.stringify({
           title: nuevoSub.trim(),
           activity: actividad.id,
-          fecha: nuevoSubFecha,                       // ← campo real del servidor
+          fecha: nuevoSubFecha,
           horas_estimadas: parseFloat(nuevoSubHoras),
         })
       });
       if (res.status === 201) {
+        const data = await res.json();
+        const newId = data?.data?.id || data?.id;
+        if (newId) {
+          try {
+            const meta = JSON.parse(localStorage.getItem(`subtask_meta_${actividad.id}`) || '{}');
+            meta[newId] = { fecha: nuevoSubFecha, horas: parseFloat(nuevoSubHoras) };
+            localStorage.setItem(`subtask_meta_${actividad.id}`, JSON.stringify(meta));
+          } catch {}
+        }
         setNuevoSub(''); setNuevoSubFecha(''); setNuevoSubHoras(''); setErrorSub('');
         cargarSubtasks();
       }
@@ -535,16 +1056,25 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
 
   const guardarEdicionSub = async (id) => {
     if (!editandoSubTitulo.trim()) { setErrorSub('El título no puede estar vacío.'); return; }
-
-    // ✅ FIX: Validar fecha pasada en edición
     if (editandoSubFecha && editandoSubFecha < TODAY) {
       setErrorSub(`La fecha de la subtarea no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
       return;
     }
-
-    // ✅ FIX: Validar que la subtarea no supere la fecha de la actividad
     if (fecha && editandoSubFecha && editandoSubFecha > fecha) {
       setErrorSub(`La subtarea no puede tener fecha posterior a la actividad (${formatFecha(fecha)}).`);
+      return;
+    }
+
+    // ── NUEVA VALIDACIÓN de horas en edición ─────────────────
+    const horasPadre = parseFloat(horasEstimadas) || 0;
+    const horasOtras = subtasks.filter(s => s.id !== id).reduce((sum, st) => sum + (parseFloat(st.horas) || 0), 0);
+    const horasEditadas = parseFloat(editandoSubHoras) || 0;
+    if (horasPadre > 0 && horasOtras + horasEditadas > horasPadre) {
+      const disponibles = (horasPadre - horasOtras).toFixed(1);
+      setErrorSub(
+        `Las subtareas no pueden superar las ${horasPadre}h de la actividad. ` +
+        `Quedan ${disponibles}h disponibles.`
+      );
       return;
     }
 
@@ -554,59 +1084,22 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           title: editandoSubTitulo.trim(),
-          fecha: editandoSubFecha || undefined,        // ← campo real del servidor
+          fecha: editandoSubFecha || undefined,
           horas_estimadas: editandoSubHoras ? parseFloat(editandoSubHoras) : undefined,
         })
       });
-      setEditandoSubId(null);
-      setEditandoSubTitulo('');
-      setEditandoSubFecha('');
-      setEditandoSubHoras('');
+      try {
+        const meta = JSON.parse(localStorage.getItem(`subtask_meta_${actividad.id}`) || '{}');
+        meta[id] = { fecha: editandoSubFecha, horas: parseFloat(editandoSubHoras) };
+        localStorage.setItem(`subtask_meta_${actividad.id}`, JSON.stringify(meta));
+      } catch {}
+      setEditandoSubId(null); setEditandoSubTitulo(''); setEditandoSubFecha(''); setEditandoSubHoras('');
       setErrorSub('');
       cargarSubtasks();
     } catch (err) { console.error(err); }
   };
 
-  const manejarEnvio = async () => {
-    if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
-    if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
-    if (!descripcion.trim())      { setError('Debe ingresar una descripción.'); return; }
-    if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
-    if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
-    if (!fecha)                   { setError('Selecciona una fecha.'); return; }
-
-    // ✅ FIX: No permitir fecha de actividad pasada
-    if (fecha < TODAY) {
-      setError(`La fecha de la actividad no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
-      return;
-    }
-    if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
-
-    // ✅ VALIDACIÓN 6H: Consultar horas ya ocupadas en esa fecha (excluyendo la actividad actual)
-    const horasOcupadas    = await consultarHorasOcupadas(fecha, token, actividad.id);
-    const horasNuevas      = parseFloat(horasEstimadas);
-    const horasDisponibles = LIMITE_HORAS_DIA - horasOcupadas;
-
-    if (horasOcupadas + horasNuevas > LIMITE_HORAS_DIA) {
-      setError(
-        `El día ${formatFecha(fecha)} ya tiene ${horasOcupadas}h agendadas de un máximo de ${LIMITE_HORAS_DIA}h. ` +
-        `Solo quedan ${horasDisponibles > 0 ? horasDisponibles + 'h disponibles' : '0h disponibles'}. ` +
-        `Elige otra fecha o reduce las horas estimadas.`
-      );
-      return;
-    }
-
-    // ✅ FIX: Verificar subtareas con fecha posterior a la nueva fecha de actividad
-    const subsConFechaInvalida = subtasks.filter(st => st.fecha && st.fecha > fecha);
-    if (subsConFechaInvalida.length > 0) {
-      const nombres = subsConFechaInvalida.map(st => `"${st.titulo}"`).join(', ');
-      setError(
-        `Las siguientes subtareas tienen fecha posterior al ${formatFecha(fecha)}: ${nombres}. ` +
-        `Edítalas primero para poder guardar.`
-      );
-      return;
-    }
-
+  const manejarEnvioConFechaEdit = async (fechaFinal) => {
     setError(''); setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
@@ -614,7 +1107,7 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           title: titulo, description: descripcion,
-          start_date: fecha, due_date: fecha,
+          start_date: fechaFinal, due_date: fechaFinal,
           activity_type: tipo, difficulty: dificultad,
           horas_estimadas: parseFloat(horasEstimadas),
         }),
@@ -630,9 +1123,41 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
         else setError('Datos incorrectos.');
         setLoading(false);
       }
-    } catch (err) {
+    } catch {
       setError('Error de conexión.'); setLoading(false);
     }
+  };
+
+  const manejarEnvio = async () => {
+    if (!titulo.trim())           { setError('Debe ingresar un titulo.'); return; }
+    if (titulo.trim().length < 3) { setError('El titulo debe tener al menos 3 caracteres.'); return; }
+    if (!descripcion.trim())      { setError('Debe ingresar una descripción.'); return; }
+    if (!tipo)                    { setError('Selecciona el tipo de actividad.'); return; }
+    if (!dificultad)              { setError('Selecciona la prioridad.'); return; }
+    if (!fecha)                   { setError('Selecciona una fecha.'); return; }
+    if (fecha < TODAY) {
+      setError(`La fecha de la actividad no puede ser anterior a hoy (${formatFecha(TODAY)}).`);
+      return;
+    }
+    if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
+
+    const horasOcupadas = await consultarHorasOcupadas(fecha, token, actividad.id);
+    if (horasOcupadas + parseFloat(horasEstimadas) > LIMITE_HORAS_DIA) {
+      setAlertaSobrecarga({ modo: 'overload_reprog', horasOcupadas });
+      return;
+    }
+
+    const subsConFechaInvalida = subtasks.filter(st => st.fecha && st.fecha > fecha);
+    if (subsConFechaInvalida.length > 0) {
+      const nombres = subsConFechaInvalida.map(st => `"${st.titulo}"`).join(', ');
+      setError(
+        `Las siguientes subtareas tienen fecha posterior al ${formatFecha(fecha)}: ${nombres}. ` +
+        `Edítalas primero para poder guardar.`
+      );
+      return;
+    }
+
+    await manejarEnvioConFechaEdit(fecha);
   };
 
   return (
@@ -643,7 +1168,18 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
           <button className="ca-cerrar" onClick={onClose}>✕</button>
         </div>
         {success && <div className="ca-mensaje ca-exito">✅ Actividad actualizada. Cerrando...</div>}
-        {error   && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
+        <div ref={mensajeRef}>
+          {alertaSobrecarga && (
+            <AlertaSobrecarga
+              data={alertaSobrecarga}
+              cargando={cargandoReprogramar}
+              onReprogramar={handleReprogramarEdit}
+              onElegirFecha={handleElegirFechaEdit}
+              onDividir={() => {}}
+            />
+          )}
+          {error && <div className="ca-mensaje ca-error">⚠️ {error}</div>}
+        </div>
         {!success && (
           <div className="ca-form">
             <div className="ca-campo">
@@ -683,8 +1219,7 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
             <div className="ca-fila-2">
               <div className="ca-campo">
                 <label className="ca-label">Fecha de actividad *</label>
-                {/* ✅ FIX: min=TODAY bloquea fechas pasadas */}
-                <input className="ca-input" type="date" min={TODAY} value={fecha} onChange={e => setFecha(e.target.value)} />
+                <input ref={fechaInputRef} className="ca-input" type="date" min={TODAY} value={fecha} onChange={e => { setFecha(e.target.value); setAlertaSobrecarga(null); }} />
               </div>
               <div className="ca-campo">
                 <label className="ca-label">Horas estimadas *</label>
@@ -699,6 +1234,30 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                 {loadingSubs && <span style={{color:'#aaa', fontWeight:400, marginLeft:8}}>cargando...</span>}
               </label>
 
+              {/* ── Barra de progreso de horas en edición ──── */}
+              {!loadingSubs && parseFloat(horasEstimadas) > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#555', marginBottom: 4 }}>
+                    <span>Horas asignadas a subtareas</span>
+                    <span style={{ fontWeight: 600, color: horasSubtareasEdit >= parseFloat(horasEstimadas) ? '#c0392b' : '#2563eb' }}>
+                      {horasSubtareasEdit.toFixed(1)}h / {horasEstimadas}h
+                      <span style={{ color: '#777', fontWeight: 400 }}>
+                        {' '}({Math.max(0, parseFloat(horasEstimadas) - horasSubtareasEdit).toFixed(1)}h disponibles)
+                      </span>
+                    </span>
+                  </div>
+                  <div style={{ background: '#e5e7eb', borderRadius: 99, height: 6, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${Math.min(100, (horasSubtareasEdit / parseFloat(horasEstimadas)) * 100)}%`,
+                      background: horasSubtareasEdit >= parseFloat(horasEstimadas) ? '#ef4444' : horasSubtareasEdit / parseFloat(horasEstimadas) >= 0.8 ? '#f59e0b' : '#3b82f6',
+                      borderRadius: 99,
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </div>
+                </div>
+              )}
+
               {!loadingSubs && (
                 <>
                   <div className="ca-subtask-cols-header">
@@ -711,7 +1270,6 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                   {subtasks.length > 0 && (
                     <ul className="ca-subtasks-lista">
                       {subtasks.map(st => {
-                        // ✅ FIX: Marcar subtareas cuya fecha es inválida respecto a la nueva fecha de actividad
                         const fechaInvalida = st.fecha && fecha && st.fecha > fecha;
                         return (
                           <li key={st.id} className={`ca-subtask-item${fechaInvalida ? ' ca-subtask-fecha-invalida' : ''}`}>
@@ -720,7 +1278,6 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                                 <div className="ca-subtask-edit-grid">
                                   <input className="ca-input" type="text" placeholder="Título"
                                     value={editandoSubTitulo} onChange={e => setEditandoSubTitulo(e.target.value)} autoFocus />
-                                  {/* ✅ FIX: min y max en edición */}
                                   <input className="ca-input" type="date"
                                     min={TODAY} max={fecha || undefined}
                                     value={editandoSubFecha} onChange={e => setEditandoSubFecha(e.target.value)} />
@@ -737,17 +1294,8 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
                                 <div className="ca-subtask-edit-grid">
                                   <span className="ca-subtask-texto">
                                     {st.titulo}
-                                    {/* ✅ FIX: Indicador visual de fecha conflictiva */}
                                     {fechaInvalida && (
-                                      <span style={{
-                                        marginLeft: 8,
-                                        fontSize: 11,
-                                        color: '#c0392b',
-                                        fontWeight: 600,
-                                        background: '#fdecea',
-                                        borderRadius: 4,
-                                        padding: '1px 6px',
-                                      }}>
+                                      <span style={{ marginLeft: 8, fontSize: 11, color: '#c0392b', fontWeight: 600, background: '#fdecea', borderRadius: 4, padding: '1px 6px' }}>
                                         ⚠ Reprogramar
                                       </span>
                                     )}
@@ -773,22 +1321,34 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
 
                   {errorSub && <p className="ca-sub-error">{errorSub}</p>}
 
-                  {/* Agregar nueva subtarea */}
                   <div className="ca-subtask-input-grid">
                     <input className="ca-input" type="text" placeholder="Título subtarea"
-                      value={nuevoSub} onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
+                      value={nuevoSub}
+                      disabled={parseFloat(horasEstimadas) > 0 && horasSubtareasEdit >= parseFloat(horasEstimadas)}
+                      onChange={e => { setNuevoSub(e.target.value); setErrorSub(''); }}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregarSubtask(); } }}
                     />
-                    {/* ✅ FIX: min y max en nueva subtarea */}
                     <input className="ca-input" type="date"
                       min={TODAY} max={fecha || undefined}
+                      disabled={parseFloat(horasEstimadas) > 0 && horasSubtareasEdit >= parseFloat(horasEstimadas)}
                       value={nuevoSubFecha} onChange={e => { setNuevoSubFecha(e.target.value); setErrorSub(''); }}
                     />
-                    <input className="ca-input" type="number" min="0.5" step="0.5" placeholder="Horas"
-                      value={nuevoSubHoras} onChange={e => { setNuevoSubHoras(e.target.value); setErrorSub(''); }}
+                    <input className="ca-input" type="number" min="0.5" step="0.5"
+                      placeholder={parseFloat(horasEstimadas) > 0 ? `máx ${Math.max(0, parseFloat(horasEstimadas) - horasSubtareasEdit).toFixed(1)}h` : 'Horas'}
+                      disabled={parseFloat(horasEstimadas) > 0 && horasSubtareasEdit >= parseFloat(horasEstimadas)}
+                      value={nuevoSubHoras}
+                      onChange={e => { setNuevoSubHoras(e.target.value); setErrorSub(''); }}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregarSubtask(); } }}
                     />
-                    <button className="ca-subtask-add-btn" type="button" onClick={agregarSubtask}>+ Agregar</button>
+                    <button
+                      className="ca-subtask-add-btn"
+                      type="button"
+                      onClick={agregarSubtask}
+                      disabled={parseFloat(horasEstimadas) > 0 && horasSubtareasEdit >= parseFloat(horasEstimadas)}
+                      style={{ opacity: (parseFloat(horasEstimadas) > 0 && horasSubtareasEdit >= parseFloat(horasEstimadas)) ? 0.5 : 1 }}
+                    >
+                      + Agregar
+                    </button>
                   </div>
                 </>
               )}
