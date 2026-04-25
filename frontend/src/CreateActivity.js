@@ -536,13 +536,23 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
         const data = await res.json();
         const actividadId = data?.data?.id;
         if (actividadId && subtasks.length > 0) {
-          await Promise.all(subtasks.map(st =>
+          const responses = await Promise.all(subtasks.map(st =>
             fetch(API_BASE + '/api/subtasks/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ title: st.titulo, activity: actividadId })
-            })
+            }).then(r => r.json())
           ));
+          try {
+            const meta = {};
+            responses.forEach((data, i) => {
+              const newId = data?.data?.id || data?.id;
+              if (newId) {
+                meta[newId] = { fecha: subtasks[i].fecha, horas: subtasks[i].horas };
+              }
+            });
+            localStorage.setItem(`subtask_meta_${actividadId}`, JSON.stringify(meta));
+          } catch {}
         }
         setSuccess(true); setLoading(false);
         setTimeout(() => { if (onActivityCreated) onActivityCreated(); if (onClose) onClose(); }, 1500);
@@ -704,7 +714,7 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
               <div className="ca-campo">
                 <label className="ca-label">Horas estimadas *</label>
                 <div className="ca-horas-wrapper">
-                  <input className="ca-input ca-input-horas" type="number" min="0" step="1" placeholder="00 h" value={horasEstimadas} onChange={e => { setHorasEstimadas(e.target.value); setAlertaSobrecarga(null); }} />
+                  <input className="ca-input ca-input-horas" type="number" min="0" step="0.5" placeholder="00 h" value={horasEstimadas} onChange={e => { setHorasEstimadas(e.target.value); setAlertaSobrecarga(null); }} />
                 </div>
               </div>
             </div>
@@ -1140,6 +1150,7 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
       return;
     }
     if (!horasEstimadas || parseFloat(horasEstimadas) <= 0) { setError('Las horas estimadas deben ser mayores a 0.'); return; }
+    if (parseFloat(horasEstimadas) % 0.5 !== 0) { setError('Las horas estimadas deben ser múltiplos de 0.5 (ej: 1, 1.5, 2).'); return; }
 
     const horasOcupadas = await consultarHorasOcupadas(fecha, token, actividad.id);
     if (horasOcupadas + parseFloat(horasEstimadas) > LIMITE_HORAS_DIA) {
@@ -1223,7 +1234,7 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
               </div>
               <div className="ca-campo">
                 <label className="ca-label">Horas estimadas *</label>
-                <input className="ca-input" type="number" min="0" step="1" placeholder="00 h" value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
+                <input className="ca-input" type="number" min="0" step="0.5" placeholder="00 h" value={horasEstimadas} onChange={e => setHorasEstimadas(e.target.value)} />
               </div>
             </div>
 
