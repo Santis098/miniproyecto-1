@@ -469,3 +469,16 @@
   from { transform: translate(-50%, 20px); opacity: 0; }
   to { transform: translate(-50%, 0); opacity: 1; }
 }
+
+.card-btn-clock {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 5px;
+  border-radius: 6px;
+  color: #7c3aed;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+.card-btn-clock:hover { background: #f3f0ff; }

@@ -47,6 +47,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const [nuevoFecha, setNuevoFecha]           = useState("");
   const [nuevoHoras, setNuevoHoras]           = useState("");
   const [errorNuevo, setErrorNuevo]           = useState("");
+  const [errorHoras, setErrorHoras]           = useState('');
   const [editandoId, setEditandoId]           = useState(null);
   const [editandoTitulo, setEditandoTitulo]   = useState("");
   const [editandoFecha, setEditandoFecha]     = useState("");
@@ -164,7 +165,19 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
 
   const guardarHoras = async () => {
     const val = parseFloat(horasInput);
-    if (isNaN(val) || val < 0) return;
+    if (isNaN(val) || val < 0) {
+      setErrorHoras("Ingresa un número válido mayor o igual a 0.");
+      return;
+    }
+    if (val % 0.5 !== 0) {
+      setErrorHoras("Debe ser múltiplo de 0.5 (ej: 0.5, 1, 1.5, 2).");
+      return;
+    }
+    if (val > horas_estimadas) {
+      setErrorHoras(`No puede superar el tiempo estimado (${horas_estimadas}h).`);
+      return;
+    }
+    setErrorHoras('');
     setLoadingGuardar(true);
     try {
       await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
@@ -216,8 +229,14 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
   const crearSubtask = async () => {
     if (!nuevoTitulo.trim())  { setErrorNuevo("Debe ingresar un título."); return; }
     if (nuevoTitulo.trim().length < 3) { setErrorNuevo("Mínimo 3 caracteres."); return; }
-    if (!nuevoFecha)          { setErrorNuevo("Selecciona una fecha."); return; }
+    if (!nuevoFecha)  { setErrorNuevo("Selecciona una fecha."); return; }
+    const hoyStr = new Date().toISOString().split('T')[0];
+    if (nuevoFecha < hoyStr) {
+      setErrorNuevo("La fecha no puede ser anterior a hoy.");
+      return;
+    }
     if (!nuevoHoras || parseFloat(nuevoHoras) <= 0) { setErrorNuevo("Las horas deben ser mayores a 0."); return; }
+    if (parseFloat(nuevoHoras) % 0.5 !== 0) { setErrorNuevo("Las horas deben ser múltiplos de 0.5 (ej: 0.5, 1, 1.5, 2)."); return; }
 
     // Validar fecha vs fecha de entrega de la actividad
     if (actividad.due_date && nuevoFecha > actividad.due_date) {
@@ -269,6 +288,21 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ is_completed: !st.is_completed })
       });
+
+      // Actualizar horas_trabajadas según subtareas completadas
+      const horasSub = subtasks
+        .map(s => s.id === st.id ? { ...s, is_completed: !s.is_completed } : s)
+        .filter(s => s.is_completed)
+        .reduce((acc, s) => acc + (s.horasMeta || 0), 0);
+
+      await fetch(`${API_BASE}/api/activities/${actividad.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ horas_trabajadas: horasSub })
+      });
+      setHorasTrabajadas(horasSub);
+      if (onActualizado) onActualizado();
+
       cargarSubtasks();
     } catch (err) { console.error(err); }
     setLoadingToggle(null);
@@ -311,7 +345,13 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     if (!editandoTitulo.trim()) { setErrorEdicion("Debe ingresar un titulo."); return; }
     if (editandoTitulo.trim().length < 3) { setErrorEdicion("Mínimo 3 caracteres."); return; }
     if (!editandoFecha) { setErrorEdicion("Selecciona una fecha."); return; }
+    const hoyStr = new Date().toISOString().split('T')[0];
+    if (editandoFecha < hoyStr) {
+      setErrorEdicion("La fecha no puede ser anterior a hoy.");
+      return;
+    }
     if (!editandoHorasSub || parseFloat(editandoHorasSub) <= 0) { setErrorEdicion("Las horas deben ser mayores a 0."); return; }
+    if (parseFloat(editandoHorasSub) % 0.5 !== 0) { setErrorEdicion("Las horas deben ser múltiplos de 0.5 (ej: 0.5, 1, 1.5, 2)."); return; }
 
     // Validar fecha vs fecha de entrega
     if (actividad.due_date && editandoFecha > actividad.due_date) {
@@ -440,10 +480,11 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
               <div>
                 <div className="detail-tiempo-label">Tiempo Invertido</div>
                 {editandoHoras ? (
+                  <>
                   <div className="horas-edit-row">
                     <input className="horas-input" type="number" min="0" step="0.5"
                       value={horasInput}
-                      onChange={e => setHorasInput(e.target.value)}
+                      onChange={e => { setHorasInput(e.target.value); setErrorHoras(''); }}
                       onKeyDown={e => { if (e.key === "Enter") guardarHoras(); if (e.key === "Escape") setEditandoHoras(false); }}
                       autoFocus />
                     <button className="horas-btn-ok" onClick={guardarHoras} disabled={loadingGuardar}>
@@ -451,7 +492,12 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                     </button>
                     <button className="horas-btn-cancel" onClick={() => setEditandoHoras(false)}>✕</button>
                   </div>
+                  {errorHoras && (
+                    <p style={{color:'#dc2626', fontSize:12, margin:'4px 0 0'}}>⚠ {errorHoras}</p>
+                  )}
+                  </>
                 ) : (
+                  
                   <div className="detail-tiempo-valor-row">
                     <span className="detail-tiempo-valor">{horasTrabajadas}h</span>
                     <button className="horas-editar-btn"
@@ -513,6 +559,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                             autoFocus />
                           <input className="edit-input-sm" type="date"
                             value={editandoFecha}
+                            min={new Date().toISOString().split('T')[0]}
+                            max={actividad.due_date || undefined}
                             onChange={e => { setEditandoFecha(e.target.value); setErrorEdicion(""); }}
                           />
                           <input className="edit-input-sm" type="number" min="0.5" step="0.5" placeholder="Horas"
@@ -575,6 +623,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
                   className="subtask-add-input"
                   type="date"
                   value={nuevoFecha}
+                  min={new Date().toISOString().split('T')[0]}
+                  max={actividad.due_date || undefined}
                   onChange={e => { setNuevoFecha(e.target.value); setErrorNuevo(""); }}
                 />
                 <input
