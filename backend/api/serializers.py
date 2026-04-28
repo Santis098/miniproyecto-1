@@ -10,24 +10,31 @@ from django.contrib.auth.password_validation import validate_password
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
-    nombre_completo = serializers.CharField(required=True)
+    nombre = serializers.CharField(required=True)
+    apellido = serializers.CharField(required=True)
 
     class Meta:
         model = Usuario
         # DEBES incluir 'username' aunque sea opcional en el JSON de entrada, 
         # o Django se quejará al validar el modelo.
-        fields = ('nombre_completo', 'email', 'password', 'password2', 'username')
+        fields = ('nombre', 'apellido', 'email', 'password', 'password2', 'username')
         extra_kwargs = {
             'username': {'required': False} # Lo hacemos opcional porque lo generamos abajo
         }
 
     def validate_nombre(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Ingresa tu nombre completo.")
-        if len(value.strip()) < 3:
-            raise serializers.ValidationError("El nombre debe tener al menos 3 caracteres.")
+            raise serializers.ValidationError("Ingresa tu nombre.")
+        if len(value.strip()) < 2:
+            raise serializers.ValidationError("El nombre debe tener al menos 2 caracteres.")
         return value.strip()
 
+    def validate_apellido(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Ingresa tu apellido.")
+        if len(value.strip()) < 2:
+            raise serializers.ValidationError("El apellido debe tener al menos 2 caracteres.")
+        return value.strip()
 
     def validate_email(self, value):
         if not value or not value.strip():
@@ -55,7 +62,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             username=username,
             email=validated_data['email'],
             password=validated_data['password'],
-            nombre=validated_data['nombre_completo'],
+            nombre=validated_data['nombre'],
+            apellido=validated_data['apellido'],
         )
         return user
 
