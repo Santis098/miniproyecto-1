@@ -75,8 +75,7 @@ class LoginView(BaseView, APIView):
 
         refresh = RefreshToken.for_user(user)
         return self.success({
-            "nombre": user.nombre,
-            "apellido": user.apellido,
+            "nombre_completo": user.nombre_completo,
             "email": user.email,
             "rol": user.rol,
             "access": str(refresh.access_token),
@@ -388,23 +387,18 @@ class ValidarLimiteHorasView(BaseView, APIView):
         return getattr(user, 'limite_horas_diarias', 6)
 
     def _horas_usadas_en_dia(self, user, fecha, excluir_subtarea_id=None):
+        """
+        El límite diario se calcula SOLO con las horas de Actividades.
+        Las subtareas no cuentan aquí — tienen su propia validación
+        contra las horas de su actividad padre.
+        """
         from django.db.models import Sum
-        # Horas de actividades en ese dia
-        horas_actividades = Activity.objects.filter(
-            usuario=user,
-            due_date=fecha
-        ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
-
-        # Horas de subtareas en ese dia
-        subtareas = Subtask.objects.filter(
-            activity__usuario=user,
-            fecha=fecha
+        return float(
+            Activity.objects.filter(
+                usuario=user,
+                due_date=fecha
+            ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
         )
-        if excluir_subtarea_id:
-            subtareas = subtareas.exclude(id=excluir_subtarea_id)
-        horas_subtareas = subtareas.aggregate(total=Sum('horas_estimadas'))['total'] or 0
-
-        return horas_actividades + horas_subtareas
 
     def _buscar_dia_disponible(self, user, desde_fecha, horas_necesarias):
         from datetime import timedelta
@@ -507,22 +501,25 @@ class SubtaskPatchView(BaseView, APIView):
     permission_classes = [IsAuthenticated]
 
     def _horas_usadas_en_dia(self, user, fecha, excluir_subtarea_id=None):
-        """Reutiliza la misma logica de calculo de horas que ValidarLimiteHorasView."""
+        """
+        Solo suma horas de Actividades para el límite diario.
+        Las subtareas se validan contra su actividad padre, no contra el límite diario.
+        """
         from django.db.models import Sum
-        horas_actividades = Activity.objects.filter(
-            usuario=user,
-            due_date=fecha
-        ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
-
-        subtareas = Subtask.objects.filter(
-            activity__usuario=user,
-            fecha=fecha
+        return float(
+            Activity.objects.filter(
+                usuario=user,
+                due_date=fecha
+            ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
         )
-        if excluir_subtarea_id:
-            subtareas = subtareas.exclude(id=excluir_subtarea_id)
-        horas_subtareas = subtareas.aggregate(total=Sum('horas_estimadas'))['total'] or 0
 
-        return horas_actividades + horas_subtareas
+    def _horas_subtareas_en_actividad(self, activity_id, excluir_id=None) -> float:
+        """Suma horas de subtareas de una actividad (para validar que no superen a la actividad)."""
+        from django.db.models import Sum
+        qs = Subtask.objects.filter(activity_id=activity_id)
+        if excluir_id:
+            qs = qs.exclude(id=excluir_id)
+        return round(float(qs.aggregate(total=Sum('horas_estimadas'))['total'] or 0), 2)
 
     def patch(self, request, pk):
         from django.db import transaction
@@ -549,48 +546,28 @@ class SubtaskPatchView(BaseView, APIView):
                 if not serializer.is_valid():
                     return self.error("Datos invalidos.", serializer.errors)
 
-                nueva_fecha = serializer.validated_data.get('fecha', subtarea.fecha)
-                nuevas_horas = serializer.validated_data.get('horas_estimadas', subtarea.horas_estimadas or 0)
-                limite = getattr(request.user, 'limite_horas_diarias', 6)
+                nueva_fecha  = serializer.validated_data.get('fecha', subtarea.fecha)
+                nuevas_horas = float(serializer.validated_data.get('horas_estimadas', subtarea.horas_estimadas or 0))
+                actividad    = subtarea.activity
 
-                # ── 3a. Re-validar si cambian las horas en el mismo dia
-                if 'horas_estimadas' in serializer.validated_data and nueva_fecha == subtarea.fecha:
-                    horas_usadas = self._horas_usadas_en_dia(
-                        request.user,
-                        nueva_fecha or subtarea.fecha,
-                        excluir_subtarea_id=subtarea.id
-                    )
-                    if horas_usadas + nuevas_horas > limite:
+                # ── 3. Validar que las horas de la subtarea no superen las de su actividad padre
+                if 'horas_estimadas' in serializer.validated_data:
+                    horas_otras = self._horas_subtareas_en_actividad(actividad.id, excluir_id=subtarea.id)
+                    horas_actividad = float(actividad.horas_estimadas or 0)
+                    if horas_otras + nuevas_horas > horas_actividad:
+                        disponibles = round(horas_actividad - horas_otras, 2)
                         return Response({
-                            "status": "limit_exceeded",
+                            "status": "subtask_hours_exceeded",
                             "message": (
-                                f"Las nuevas horas ({nuevas_horas}h) superan el limite diario. "
-                                f"Horas usadas ese dia: {horas_usadas}h, limite: {limite}h."
+                                f"Las horas de la subtarea ({nuevas_horas}h) superan lo disponible "
+                                f"en la actividad '{actividad.title}'. "
+                                f"Horas de la actividad: {horas_actividad}h, "
+                                f"ya asignadas en otras subtareas: {horas_otras}h, "
+                                f"disponibles: {disponibles}h."
                             ),
-                            "horas_usadas": horas_usadas,
-                            "horas_disponibles": round(limite - horas_usadas, 2),
-                            "limite": limite,
-                        }, status=422)
-
-                # ── 3b. Re-validar si cambia la fecha (mover de dia)
-                if 'fecha' in serializer.validated_data and nueva_fecha != subtarea.fecha:
-                    horas_nuevo_dia = self._horas_usadas_en_dia(
-                        request.user,
-                        nueva_fecha,
-                        # No excluir: la tarea aun no esta en ese dia
-                    )
-                    horas_tarea = nuevas_horas
-                    if horas_nuevo_dia + horas_tarea > limite:
-                        return Response({
-                            "status": "limit_exceeded",
-                            "message": (
-                                f"Mover la tarea al {nueva_fecha} superaria el limite diario. "
-                                f"Horas ocupadas ese dia: {horas_nuevo_dia}h, "
-                                f"horas de la tarea: {horas_tarea}h, limite: {limite}h."
-                            ),
-                            "horas_usadas": horas_nuevo_dia,
-                            "horas_disponibles": round(limite - horas_nuevo_dia, 2),
-                            "limite": limite,
+                            "horas_actividad":       horas_actividad,
+                            "horas_otras_subtareas": horas_otras,
+                            "horas_disponibles":     disponibles,
                         }, status=422)
 
                 # ── 4. Guardar — dentro de la misma transaccion atomica
@@ -963,14 +940,19 @@ class ReprogramarActividadV2View(APIView):
 
 def _calcular_horas_dia(user, fecha, excluir_subtarea_id=None) -> dict:
     """
-    Hace el SUM real contra la BD para la fecha dada.
-    Devuelve un dict con el desglose completo para poder armar el payload math.
+    Calcula las horas ocupadas en un día para el límite diario.
+
+    REGLA DE NEGOCIO:
+    - El límite diario se calcula SOLO sumando horas_estimadas de las Actividades
+      cuyo due_date coincide con la fecha.
+    - Las subtareas NO cuentan para el límite diario. Las subtareas pertenecen
+      a una actividad y no pueden superar las horas de su actividad padre
+      (esa validación es independiente y se hace en el serializer).
 
     Retorna:
         {
-            "horas_actividades": float,   — SUM(horas_estimadas) de Activity en esa fecha
-            "horas_subtareas":   float,   — SUM(horas_estimadas) de Subtask en esa fecha
-            "total":             float,   — suma de ambos
+            "horas_actividades": float,  — SUM(horas_estimadas) de Activity en esa fecha
+            "total":             float,  — igual a horas_actividades
         }
     """
     from django.db.models import Sum
@@ -983,23 +965,22 @@ def _calcular_horas_dia(user, fecha, excluir_subtarea_id=None) -> dict:
         ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
     ), 2)
 
-    # SUM real de subtareas del usuario en esa fecha
-    subtareas_qs = Subtask.objects.filter(
-        activity__usuario=user,
-        fecha=fecha
-    )
-    if excluir_subtarea_id:
-        subtareas_qs = subtareas_qs.exclude(id=excluir_subtarea_id)
-
-    horas_subtareas = round(float(
-        subtareas_qs.aggregate(total=Sum('horas_estimadas'))['total'] or 0
-    ), 2)
-
     return {
         "horas_actividades": horas_actividades,
-        "horas_subtareas":   horas_subtareas,
-        "total":             round(horas_actividades + horas_subtareas, 2),
+        "total":             horas_actividades,
     }
+
+
+def _calcular_horas_subtareas_actividad(activity_id, excluir_subtarea_id=None) -> float:
+    """
+    Suma las horas_estimadas de todas las subtareas de una actividad.
+    Se usa para validar que las subtareas no sobrepasen las horas de la actividad padre.
+    """
+    from django.db.models import Sum
+    qs = Subtask.objects.filter(activity_id=activity_id)
+    if excluir_subtarea_id:
+        qs = qs.exclude(id=excluir_subtarea_id)
+    return round(float(qs.aggregate(total=Sum('horas_estimadas'))['total'] or 0), 2)
 
 
 # ── Sanitizador estricto de horas ────────────────────────────────────────────
@@ -1042,7 +1023,11 @@ def _sanitizar_horas(valor) -> float:
 
 def _payload_limite_excedido(limite: float, desglose: dict, horas_intentadas: float, sugerencia=None) -> dict:
     """
-    Construye el payload estándar de conflicto con la matemática desglosada.
+    Construye el payload estándar de conflicto cuando se supera el límite diario.
+
+    REGLA DE NEGOCIO:
+    - El límite diario se calcula SOLO con horas de Actividades (no subtareas).
+    - Las subtareas tienen su propia validación contra las horas de su actividad padre.
 
     Ejemplo de respuesta resultante:
     {
@@ -1051,34 +1036,32 @@ def _payload_limite_excedido(limite: float, desglose: dict, horas_intentadas: fl
         "message": "Superas el límite diario de 6h.",
         "math": {
             "limite_diario":    6.0,
-            "horas_actividades": 2.0,   — aporte de actividades ese día
-            "horas_subtareas":   3.0,   — aporte de subtareas ese día
-            "horas_asignadas":   5.0,   — total ya ocupado
-            "horas_intentadas":  2.0,   — lo que se está intentando agregar
-            "total_resultante":  7.0,   — cómo quedaría si se permitiera
-            "exceso_horas":      1.0,   — cuánto sobra
-            "horas_disponibles": 1.0    — cuánto queda libre actualmente
+            "horas_actividades": 5.0,  — horas ya ocupadas por actividades ese día
+            "horas_asignadas":   5.0,  — total ya ocupado
+            "horas_intentadas":  2.0,  — lo que se intenta agregar
+            "total_resultante":  7.0,  — cómo quedaría si se permitiera
+            "exceso_horas":      1.0,  — cuánto sobra del límite
+            "horas_disponibles": 1.0   — cuánto queda libre actualmente
         },
-        "suggestion": { ... }           — día alternativo sugerido (puede ser null)
+        "suggestion": { ... }          — día alternativo sugerido (puede ser null)
     }
     """
-    horas_asignadas   = desglose["total"]
-    total_resultante  = round(horas_asignadas + horas_intentadas, 2)
-    exceso            = round(total_resultante - limite, 2)
-    disponibles       = round(limite - horas_asignadas, 2)
+    horas_asignadas  = desglose["total"]
+    total_resultante = round(horas_asignadas + horas_intentadas, 2)
+    exceso           = round(total_resultante - limite, 2)
+    disponibles      = round(limite - horas_asignadas, 2)
 
     return {
-        "success":  False,
-        "error":    "limite_excedido",
-        "message":  (
+        "success": False,
+        "error":   "limite_excedido",
+        "message": (
             f"Superas el límite diario de {limite}h. "
-            f"Ya tienes {horas_asignadas}h asignadas e intentas agregar {horas_intentadas}h "
+            f"Ya tienes {horas_asignadas}h en actividades e intentas agregar {horas_intentadas}h "
             f"(total: {total_resultante}h, exceso: {exceso}h)."
         ),
         "math": {
             "limite_diario":     limite,
             "horas_actividades": desglose["horas_actividades"],
-            "horas_subtareas":   desglose["horas_subtareas"],
             "horas_asignadas":   horas_asignadas,
             "horas_intentadas":  horas_intentadas,
             "total_resultante":  total_resultante,
@@ -1245,26 +1228,30 @@ class SubtaskPatchV2View(APIView):
                         "data": serializer.errors,
                     }, status=400)
 
-                nueva_fecha   = serializer.validated_data.get('fecha', subtarea.fecha)
-                nuevas_horas  = serializer.validated_data.get('horas_estimadas', subtarea.horas_estimadas or 0)
-                limite        = float(getattr(request.user, 'limite_horas_diarias', 6))
+                nueva_fecha  = serializer.validated_data.get('fecha', subtarea.fecha)
+                nuevas_horas = float(serializer.validated_data.get('horas_estimadas', subtarea.horas_estimadas or 0))
+                actividad    = subtarea.activity
 
-                # ── Re-validar cambio de horas en el mismo día (SUM real)
-                if 'horas_estimadas' in serializer.validated_data and nueva_fecha == subtarea.fecha:
-                    desglose = _calcular_horas_dia(
-                        request.user, nueva_fecha or subtarea.fecha,
-                        excluir_subtarea_id=subtarea.id
-                    )
-                    if desglose["total"] + nuevas_horas > limite:
-                        payload = _payload_limite_excedido(limite, desglose, nuevas_horas)
-                        return Response(payload, status=422)
-
-                # ── Re-validar mover de día (SUM real en el nuevo día)
-                if 'fecha' in serializer.validated_data and nueva_fecha != subtarea.fecha:
-                    desglose = _calcular_horas_dia(request.user, nueva_fecha)
-                    if desglose["total"] + nuevas_horas > limite:
-                        payload = _payload_limite_excedido(limite, desglose, nuevas_horas)
-                        return Response(payload, status=422)
+                # ── Validar que las horas de la subtarea no superen las de su actividad padre
+                if 'horas_estimadas' in serializer.validated_data:
+                    horas_otras = _calcular_horas_subtareas_actividad(actividad.id, excluir_subtarea_id=subtarea.id)
+                    horas_actividad = float(actividad.horas_estimadas or 0)
+                    if horas_otras + nuevas_horas > horas_actividad:
+                        disponibles = round(horas_actividad - horas_otras, 2)
+                        return Response({
+                            "success": False,
+                            "error": "subtask_hours_exceeded",
+                            "message": (
+                                f"Las horas de la subtarea ({nuevas_horas}h) superan lo disponible "
+                                f"en la actividad '{actividad.title}'. "
+                                f"Horas de la actividad: {horas_actividad}h, "
+                                f"ya asignadas en otras subtareas: {horas_otras}h, "
+                                f"disponibles: {disponibles}h."
+                            ),
+                            "horas_actividad":       horas_actividad,
+                            "horas_otras_subtareas": horas_otras,
+                            "horas_disponibles":     disponibles,
+                        }, status=422)
 
                 serializer.save()
 

@@ -10,31 +10,24 @@ from django.contrib.auth.password_validation import validate_password
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
-    nombre = serializers.CharField(required=True)
-    apellido = serializers.CharField(required=True)
+    nombre_completo = serializers.CharField(required=True)
 
     class Meta:
         model = Usuario
         # DEBES incluir 'username' aunque sea opcional en el JSON de entrada, 
         # o Django se quejará al validar el modelo.
-        fields = ('nombre', 'apellido', 'email', 'password', 'password2', 'username')
+        fields = ('nombre_completo', 'email', 'password', 'password2', 'username')
         extra_kwargs = {
             'username': {'required': False} # Lo hacemos opcional porque lo generamos abajo
         }
 
     def validate_nombre(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Ingresa tu nombre.")
-        if len(value.strip()) < 2:
-            raise serializers.ValidationError("El nombre debe tener al menos 2 caracteres.")
+            raise serializers.ValidationError("Ingresa tu nombre completo.")
+        if len(value.strip()) < 3:
+            raise serializers.ValidationError("El nombre debe tener al menos 3 caracteres.")
         return value.strip()
 
-    def validate_apellido(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Ingresa tu apellido.")
-        if len(value.strip()) < 2:
-            raise serializers.ValidationError("El apellido debe tener al menos 2 caracteres.")
-        return value.strip()
 
     def validate_email(self, value):
         if not value or not value.strip():
@@ -62,8 +55,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             username=username,
             email=validated_data['email'],
             password=validated_data['password'],
-            nombre=validated_data['nombre'],
-            apellido=validated_data['apellido'],
+            nombre=validated_data['nombre_completo'],
         )
         return user
 
@@ -115,11 +107,23 @@ class SubtaskSerializer(serializers.ModelSerializer):
                         "fecha": f"La fecha de la subtarea no puede ser mayor a la fecha de entrega de la actividad ({activity.due_date})."
                     })
 
-            # Validar que las horas de la subtarea no sean mayores a las de la actividad
+            # Validar que la SUMA de horas de todas las subtareas no supere las horas de la actividad
             if horas_estimadas is not None and activity.horas_estimadas is not None:
-                if float(horas_estimadas) > float(activity.horas_estimadas):
+                from django.db.models import Sum
+                # Sumar horas de subtareas ya existentes de esta actividad
+                horas_otras = float(
+                    activity.subtasks.aggregate(total=Sum('horas_estimadas'))['total'] or 0
+                )
+                horas_actividad = float(activity.horas_estimadas)
+                if horas_otras + float(horas_estimadas) > horas_actividad:
+                    disponibles = round(horas_actividad - horas_otras, 2)
                     raise serializers.ValidationError({
-                        "horas_estimadas": f"Las horas estimadas de la subtarea ({horas_estimadas}h) no pueden ser mayores a las de la actividad ({activity.horas_estimadas}h)."
+                        "horas_estimadas": (
+                            f"Las horas de esta subtarea ({horas_estimadas}h) superan lo disponible en la actividad. "
+                            f"Horas de la actividad: {horas_actividad}h, "
+                            f"ya asignadas en otras subtareas: {horas_otras}h, "
+                            f"disponibles: {disponibles}h."
+                        )
                     })
 
         return attrs
