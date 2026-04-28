@@ -5,16 +5,15 @@ from .views import (
     SubtaskListCreateAPIView, SubtaskRetrieveUpdateDestroyAPIView,
     RegisterView, LoginView, TareasHoyView, ReprogramarActividadView,
     LimiteHorasDiariasView, ValidarLimiteHorasView,
-    SubtaskPatchView,  # Sprint 2
-    # Sprint 3
+    SubtaskPatchView,
     RegisterV2View, LoginV2View,
     ActivityCreateV2View, SubtaskCreateV2View,
     ReprogramarActividadV2View,
-    # Sprint 4
     ValidarLimiteHorasV2View, SubtaskPatchV2View,
-    ActivityDistribuirView,  # Sprint 4b
-    # Sprint 5
-    ActivityListV2View, TareasHoyV2View,
+    ActivityDistribuirView,
+    # FIX: ActivityListV2View se une con ActivityCreateV2View en una sola vista
+    ActivityV2View,
+    TareasHoyV2View,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -40,26 +39,26 @@ urlpatterns = [
     path('usuario/limite-horas/', LimiteHorasDiariasView.as_view(), name='limite-horas'),
     path('validar/limite-horas/', ValidarLimiteHorasView.as_view(), name='validar-limite-horas'),
 
-    # Sprint 2 — PATCH parcial de subtarea con re-validacion y concurrencia
+    # Sprint 2
     path('subtasks/<int:pk>/patch/', SubtaskPatchView.as_view(), name='subtask-patch'),
 
-    # Sprint 3 — Respuestas unificadas, códigos HTTP semánticos e idempotencia
+    # Sprint 3
     path('v2/auth/register/', RegisterV2View.as_view(), name='v2-register'),
     path('v2/auth/login/', LoginV2View.as_view(), name='v2-login'),
-    path('v2/activities/', ActivityCreateV2View.as_view(), name='v2-activity-create'),
+    # FIX: una sola ruta v2/activities/ que maneja GET y POST
+    path('v2/activities/', ActivityV2View.as_view(), name='v2-activities'),
     path('v2/subtasks/', SubtaskCreateV2View.as_view(), name='v2-subtask-create'),
     path('v2/activities/<int:pk>/reprogramar/', ReprogramarActividadV2View.as_view(), name='v2-activity-reprogramar'),
 
-    # Sprint 5 — Exclusión de actividades completadas
-    path('v2/activities/', ActivityListV2View.as_view(), name='v2-activity-list'),
-    path('v2/tasks/hoy/', TareasHoyV2View.as_view(), name='v2-tasks-hoy'),
-
-    # Sprint 4b — Distribución automática de actividades
-    path('v2/activities/distribuir/', ActivityDistribuirView.as_view(), name='v2-activity-distribuir'),
-
-    # Sprint 4 — Cálculos precisos, payload math y sanitización de tipos
+    # Sprint 4
     path('v2/validar/limite-horas/', ValidarLimiteHorasV2View.as_view(), name='v2-validar-limite'),
     path('v2/subtasks/<int:pk>/patch/', SubtaskPatchV2View.as_view(), name='v2-subtask-patch'),
+
+    # Sprint 4b
+    path('v2/activities/distribuir/', ActivityDistribuirView.as_view(), name='v2-activity-distribuir'),
+
+    # Sprint 5
+    path('v2/tasks/hoy/', TareasHoyV2View.as_view(), name='v2-tasks-hoy'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),

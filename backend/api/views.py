@@ -1148,7 +1148,8 @@ class ValidarLimiteHorasV2View(APIView):
                 "math": {
                     "limite_diario":     limite,
                     "horas_actividades": desglose["horas_actividades"],
-                    "horas_subtareas":   desglose["horas_subtareas"],
+                    # FIX: horas_subtareas eliminado — _calcular_horas_dia() no lo retorna
+                    # Las subtareas se validan contra su actividad padre, no contra el limite diario
                     "horas_asignadas":   desglose["total"],
                     "horas_intentadas":  horas,
                     "total_resultante":  round(desglose["total"] + horas, 2),
@@ -1611,6 +1612,63 @@ class TareasHoyV2View(BaseView, APIView):
             "hoy":       TareaHoyV2Serializer(hoy_tareas, many=True).data,
             "proximas":  TareaHoyV2Serializer(proximas, many=True).data,
         }, "Tareas obtenidas correctamente.")
+
+
+# ==============================
+# FIX SPRINT 3+5 — VISTA UNIFICADA v2/activities/
+# Antes habia dos rutas distintas con el mismo path, rompiendo el routing de Django.
+# Esta clase maneja GET (listar pendientes) y POST (crear con idempotencia).
+# ==============================
+
+class ActivityV2View(BaseView, APIView):
+    """
+    GET  /api/v2/activities/ - Lista actividades pendientes
+    POST /api/v2/activities/ - Crea actividad con idempotencia
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import F
+        from .serializers import ActivitySerializer
+
+        incluir_completadas = request.query_params.get("incluir_completadas", "false").lower() == "true"
+        qs = Activity.objects.filter(usuario=request.user)
+
+        if not incluir_completadas:
+            qs = qs.exclude(horas_estimadas__gt=0, horas_trabajadas__gte=F("horas_estimadas"))
+
+        total_completadas = Activity.objects.filter(
+            usuario=request.user,
+            horas_estimadas__gt=0,
+            horas_trabajadas__gte=F("horas_estimadas")
+        ).count()
+
+        serializer = ActivitySerializer(qs.order_by("due_date"), many=True)
+        return self.success({
+            "actividades": serializer.data,
+            "total_pendientes": qs.count(),
+            "total_completadas": total_completadas,
+            "mostrando_completadas": incluir_completadas,
+        }, "Actividades obtenidas correctamente.")
+
+    def post(self, request):
+        from .serializers import ActivitySerializer
+
+        if _check_idempotency(request.user.id, request.data):
+            return std_error(
+                "Detectamos una solicitud duplicada.",
+                error_code="DUPLICATE_REQUEST",
+                status_code=409
+            )
+
+        serializer = ActivitySerializer(data=request.data)
+        if not serializer.is_valid():
+            errors = serializer.errors
+            message = _humanize_activity_errors(errors)
+            return std_error(message, error_code="VALIDATION_ERROR", data=errors, status_code=400)
+
+        serializer.save(usuario=request.user)
+        return std_success(serializer.data, "Actividad creada correctamente.", status_code=201)
 
 
 # ==============================
