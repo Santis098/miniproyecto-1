@@ -1321,6 +1321,64 @@ class SubtaskEstadoView(APIView):
 
 
 # ==============================
+# SPRINT 7 — PROGRESO DE ACTIVIDAD BASADO EN SUBTAREAS
+# GET /api/v2/activities/{id}/progreso/
+#
+# Lógica:
+#   1. Busca la actividad por ID (solo del usuario autenticado).
+#   2. Obtiene todas sus subtareas relacionadas.
+#   3. Cuenta total y subtareas con estado "hecha".
+#   4. Calcula progreso = (hechas / total) * 100, redondeado a 2 decimales.
+#   5. Si no hay subtareas, retorna 0%.
+#
+# El progreso se calcula en tiempo real; nunca se persiste en la BD.
+# ==============================
+
+class ActivityProgresoView(APIView):
+    """
+    GET /api/v2/activities/{id}/progreso/
+
+    Devuelve el progreso de una actividad basado en el estado real
+    de sus subtareas. Solo las subtareas con estado "hecha" cuentan
+    como completadas. "pospuesta" no suma al progreso.
+    El cálculo es dinámico y nunca se guarda en la base de datos.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        # 1. Buscar la actividad garantizando que pertenece al usuario autenticado
+        try:
+            actividad = Activity.objects.get(pk=pk, usuario=request.user)
+        except Activity.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": "NOT_FOUND",
+                "message": "Actividad no encontrada o no tienes permiso para verla.",
+            }, status=404)
+
+        # 2. Obtener todas las subtareas de la actividad
+        subtareas = actividad.subtasks.all()
+
+        # 3. Contar total y completadas
+        total_subtareas = subtareas.count()
+        subtareas_hechas = subtareas.filter(estado="hecha").count()
+
+        # 4. Calcular progreso (evitar división por cero si no hay subtareas)
+        if total_subtareas == 0:
+            progreso = 0.0
+        else:
+            progreso = round((subtareas_hechas / total_subtareas) * 100, 2)
+
+        # 5. Responder con los datos calculados
+        return Response({
+            "activity_id": actividad.pk,
+            "total_subtasks": total_subtareas,
+            "completed_subtasks": subtareas_hechas,
+            "progress": progreso,
+        }, status=200)
+
+
+# ==============================
 # SPRINT 4b — DISTRIBUCIÓN AUTOMÁTICA DE ACTIVIDADES EN VARIOS DÍAS
 # POST /api/v2/activities/distribuir/
 #

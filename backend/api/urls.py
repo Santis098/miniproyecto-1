@@ -15,6 +15,7 @@ from .views import (
     ActivityV2View,
     TareasHoyV2View,
     SubtaskEstadoView,
+    ActivityProgresoView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -63,6 +64,9 @@ urlpatterns = [
 
     # Sprint 6 — Estado de subtarea
     path('v2/subtasks/<int:pk>/estado/', SubtaskEstadoView.as_view(), name='v2-subtask-estado'),
+
+    # Sprint 7 — Progreso de actividad
+    path('v2/activities/<int:pk>/progreso/', ActivityProgresoView.as_view(), name='v2-activity-progreso'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
