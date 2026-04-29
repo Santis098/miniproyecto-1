@@ -1272,6 +1272,55 @@ class SubtaskPatchV2View(APIView):
 
 
 # ==============================
+# SPRINT 6 — ESTADO DE SUBTAREA
+# PATCH /subtasks/{id}/estado/
+#
+# Permite marcar una subtarea como:
+#   - "hecha"     → se guarda y la nota se limpia (null)
+#   - "pospuesta" → se guarda con nota obligatoria explicando el motivo
+#
+# Separado de SubtaskPatchView y SubtaskPatchV2View para mantener
+# separación de responsabilidades. Siempre pasa por el serializer.
+# ==============================
+
+class SubtaskEstadoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        from .serializers import SubtaskEstadoSerializer, SubtaskSerializer
+
+        try:
+            subtarea = (
+                Subtask.objects
+                .select_related('activity')
+                .get(pk=pk, activity__usuario=request.user)
+            )
+        except Subtask.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": "NOT_FOUND",
+                "message": "Subtarea no encontrada o no tienes permiso para modificarla.",
+            }, status=404)
+
+        serializer = SubtaskEstadoSerializer(subtarea, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({
+                "success": False,
+                "error": "VALIDATION_ERROR",
+                "message": "Revisa los datos enviados.",
+                "data": serializer.errors,
+            }, status=400)
+
+        serializer.save()
+
+        return Response({
+            "success": True,
+            "message": "Estado de la subtarea actualizado correctamente.",
+            "data": SubtaskSerializer(subtarea).data,
+        }, status=200)
+
+
+# ==============================
 # SPRINT 4b — DISTRIBUCIÓN AUTOMÁTICA DE ACTIVIDADES EN VARIOS DÍAS
 # POST /api/v2/activities/distribuir/
 #

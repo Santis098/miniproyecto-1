@@ -71,10 +71,21 @@ class Activity(models.Model):
         return self.title
 
 class Subtask(models.Model):
+    ESTADO_CHOICES = (
+        ('hecha', 'Hecha'),
+        ('pospuesta', 'Pospuesta'),
+    )
+
     title = models.CharField(max_length=255)
     is_completed = models.BooleanField(default=False)
     fecha = models.DateField(null=True, blank=True)
     horas_estimadas = models.FloatField(default=0, null=True, blank=True)
+    estado = models.CharField(
+        max_length=10,
+        choices=ESTADO_CHOICES,
+        default='hecha'
+    )
+    nota = models.TextField(null=True, blank=True)
 
     activity = models.ForeignKey(
         Activity,

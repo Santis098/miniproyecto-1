@@ -14,6 +14,7 @@ from .views import (
     # FIX: ActivityListV2View se une con ActivityCreateV2View en una sola vista
     ActivityV2View,
     TareasHoyV2View,
+    SubtaskEstadoView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -59,6 +60,9 @@ urlpatterns = [
 
     # Sprint 5
     path('v2/tasks/hoy/', TareasHoyV2View.as_view(), name='v2-tasks-hoy'),
+
+    # Sprint 6 — Estado de subtarea
+    path('v2/subtasks/<int:pk>/estado/', SubtaskEstadoView.as_view(), name='v2-subtask-estado'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),

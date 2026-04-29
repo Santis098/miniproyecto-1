@@ -368,3 +368,45 @@ class TareaHoyV2Serializer(TareaHoySerializer):
         if estimadas <= 0:
             return 0
         return round(min((trabajadas / estimadas) * 100, 100), 1)
+
+
+# ==============================
+# SPRINT 6 — SubtaskEstadoSerializer
+# Serializer dedicado EXCLUSIVAMENTE para PATCH /subtasks/{id}/estado/
+# Maneja los campos 'estado' y 'nota' con sus validaciones de negocio.
+# NO mezclar con SubtaskSerializer ni SubtaskPatchSerializer.
+# ==============================
+
+class SubtaskEstadoSerializer(serializers.ModelSerializer):
+    """
+    Usado exclusivamente en PATCH /subtasks/{id}/estado/
+    Valida:
+      - Si estado='pospuesta' y no viene nota → error
+      - Si estado='hecha' → nota se limpia a null automáticamente
+    """
+    estado = serializers.ChoiceField(choices=['hecha', 'pospuesta'], required=True)
+    nota   = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+    class Meta:
+        model  = Subtask
+        fields = ['estado', 'nota']
+
+    def validate(self, attrs):
+        estado = attrs.get('estado')
+        nota   = attrs.get('nota', None)
+
+        if estado == 'pospuesta':
+            # nota debe existir y no estar vacía
+            if not nota or not nota.strip():
+                raise serializers.ValidationError({
+                    'nota': (
+                        "Debes indicar un motivo cuando la subtarea se pospone. "
+                        "El campo 'nota' es obligatorio para estado 'pospuesta'."
+                    )
+                })
+
+        if estado == 'hecha':
+            # Limpiar nota sin importar lo que venga en el request
+            attrs['nota'] = None
+
+        return attrs
