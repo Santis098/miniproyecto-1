@@ -230,6 +230,32 @@ class ActivitySerializer(serializers.ModelSerializer):
             "El tipo de actividad debe ser: exam, project, presentation o homework."
         )
         return value
+
+    def validate(self, attrs):
+        from django.db.models import Sum
+
+        # Aplica solo en actualizaciones (instance != None) donde se envía horas_estimadas
+        instance = self.instance
+        if instance is not None and 'horas_estimadas' in attrs:
+            nuevas_horas = float(attrs['horas_estimadas'])
+            total_subtareas = round(
+                float(
+                    instance.subtasks
+                    .aggregate(total=Sum('horas_estimadas'))['total'] or 0
+                ),
+                2
+            )
+            if nuevas_horas < total_subtareas:
+                raise serializers.ValidationError({
+                    "horas_estimadas": (
+                        f"No puedes reducir las horas de la actividad a {nuevas_horas}h. "
+                        f"Las subtareas actuales suman {total_subtareas}h. "
+                        f"Debes ajustar o eliminar subtareas antes de reducir las horas."
+                    )
+                })
+
+        return attrs
+
 class TareaHoySerializer(serializers.ModelSerializer):
     progreso_horas = serializers.SerializerMethodField()
     progreso_subtareas = serializers.SerializerMethodField()
