@@ -861,6 +861,8 @@ def _humanize_subtask_errors(errors: dict) -> str:
         ('fecha',           "La fecha de la subtarea no puede superar la fecha de entrega de la actividad."),
         ('horas_estimadas', "Las horas estimadas no pueden superar las horas totales de la actividad."),
         ('activity',        "Debes indicar a qué actividad pertenece esta subtarea."),
+        ('estado',          "El estado debe ser 'pendiente', 'hecha' o 'pospuesta'."),
+        ('nota',            "Debes indicar un motivo cuando la subtarea se pospone."),
     ]
     for field, msg in priority:
         if field in errors:
@@ -1296,28 +1298,29 @@ class SubtaskEstadoView(APIView):
                 .get(pk=pk, activity__usuario=request.user)
             )
         except Subtask.DoesNotExist:
-            return Response({
-                "success": False,
-                "error": "NOT_FOUND",
-                "message": "Subtarea no encontrada o no tienes permiso para modificarla.",
-            }, status=404)
+            return std_error(
+                "Subtarea no encontrada o no tienes permiso para modificarla.",
+                error_code="NOT_FOUND",
+                status_code=404,
+            )
 
         serializer = SubtaskEstadoSerializer(subtarea, data=request.data, partial=True)
         if not serializer.is_valid():
-            return Response({
-                "success": False,
-                "error": "VALIDATION_ERROR",
-                "message": "Revisa los datos enviados.",
-                "data": serializer.errors,
-            }, status=400)
+            errors = serializer.errors
+            return std_error(
+                _humanize_subtask_errors(errors),
+                error_code="VALIDATION_ERROR",
+                data=errors,
+                status_code=400,
+            )
 
         serializer.save()
 
-        return Response({
-            "success": True,
-            "message": "Estado de la subtarea actualizado correctamente.",
-            "data": SubtaskSerializer(subtarea).data,
-        }, status=200)
+        return std_success(
+            SubtaskSerializer(subtarea).data,
+            "Estado de la subtarea actualizado correctamente.",
+            status_code=200,
+        )
 
 
 # ==============================
@@ -1350,11 +1353,11 @@ class ActivityProgresoView(APIView):
         try:
             actividad = Activity.objects.get(pk=pk, usuario=request.user)
         except Activity.DoesNotExist:
-            return Response({
-                "success": False,
-                "error": "NOT_FOUND",
-                "message": "Actividad no encontrada o no tienes permiso para verla.",
-            }, status=404)
+            return std_error(
+                "Actividad no encontrada o no tienes permiso para verla.",
+                error_code="NOT_FOUND",
+                status_code=404,
+            )
 
         # 2. Obtener todas las subtareas de la actividad
         subtareas = actividad.subtasks.all()
@@ -1370,12 +1373,16 @@ class ActivityProgresoView(APIView):
             progreso = round((subtareas_hechas / total_subtareas) * 100, 2)
 
         # 5. Responder con los datos calculados
-        return Response({
-            "activity_id": actividad.pk,
-            "total_subtasks": total_subtareas,
-            "completed_subtasks": subtareas_hechas,
-            "progress": progreso,
-        }, status=200)
+        return std_success(
+            {
+                "activity_id": actividad.pk,
+                "total_subtasks": total_subtareas,
+                "completed_subtasks": subtareas_hechas,
+                "progress": progreso,
+            },
+            "Progreso de la actividad calculado correctamente.",
+            status_code=200,
+        )
 
 
 # ==============================

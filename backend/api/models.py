@@ -72,6 +72,7 @@ class Activity(models.Model):
 
 class Subtask(models.Model):
     ESTADO_CHOICES = (
+        ('pendiente', 'Pendiente'),
         ('hecha', 'Hecha'),
         ('pospuesta', 'Pospuesta'),
     )
@@ -83,7 +84,7 @@ class Subtask(models.Model):
     estado = models.CharField(
         max_length=10,
         choices=ESTADO_CHOICES,
-        default='hecha'
+        default='pendiente'
     )
     nota = models.TextField(null=True, blank=True)
 

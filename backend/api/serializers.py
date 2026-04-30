@@ -382,9 +382,12 @@ class SubtaskEstadoSerializer(serializers.ModelSerializer):
     Usado exclusivamente en PATCH /subtasks/{id}/estado/
     Valida:
       - Si estado='pospuesta' y no viene nota → error
-      - Si estado='hecha' → nota se limpia a null automáticamente
+      - Si estado='hecha' o 'pendiente' → nota se limpia a null automáticamente
     """
-    estado = serializers.ChoiceField(choices=['hecha', 'pospuesta'], required=True)
+    estado = serializers.ChoiceField(
+        choices=['pendiente', 'hecha', 'pospuesta'],
+        required=True
+    )
     nota   = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
@@ -405,8 +408,8 @@ class SubtaskEstadoSerializer(serializers.ModelSerializer):
                     )
                 })
 
-        if estado == 'hecha':
-            # Limpiar nota sin importar lo que venga en el request
+        if estado != 'pospuesta':
+            # 'hecha' y 'pendiente' no llevan nota → limpiar
             attrs['nota'] = None
 
         return attrs
