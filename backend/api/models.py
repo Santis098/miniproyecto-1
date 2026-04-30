@@ -14,6 +14,10 @@ class Usuario(AbstractUser):
     limite_horas_diarias = models.FloatField(default=6)
     nombre = models.CharField(max_length=100, blank=True, default='')
     apellido = models.CharField(max_length=100, blank=True, default='')
+    # Conflictos pendientes del límite de horas diarias.
+    # Se persisten hasta que el usuario ajuste los días en conflicto.
+    limite_conflictos_pendientes = models.JSONField(default=list, blank=True)
+    limite_conflictos_valor = models.FloatField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.nombre} {self.apellido}".strip() or self.email

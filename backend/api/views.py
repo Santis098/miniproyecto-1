@@ -353,11 +353,61 @@ class LimiteHorasDiariasView(BaseView, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Devolver el limite actual del usuario (default 6)
-        limite = getattr(request.user, 'limite_horas_diarias', 6)
-        return self.success({
-            "limite_horas_diarias": limite
-        }, "Limite de horas diarias obtenido correctamente.")
+        from collections import defaultdict
+
+        user = request.user
+        limite = getattr(user, 'limite_horas_diarias', 6)
+        conflictos_guardados = getattr(user, 'limite_conflictos_pendientes', []) or []
+        limite_conflicto = getattr(user, 'limite_conflictos_valor', None)
+
+        data = {"limite_horas_diarias": limite}
+
+        # Solo recalcular si hay conflictos persistidos — evita queries innecesarias
+        if conflictos_guardados and limite_conflicto is not None:
+            # Recalcular horas reales por día (misma lógica que el PUT)
+            horas_dia = defaultdict(float)
+
+            subtareas = (
+                Subtask.objects
+                .filter(activity__usuario=user)
+                .values('fecha', 'horas_estimadas', 'activity_id')
+            )
+            actividades_con_subtareas = set()
+            for st in subtareas:
+                actividades_con_subtareas.add(st['activity_id'])
+                if st['fecha'] is not None:
+                    horas_dia[st['fecha']] += float(st['horas_estimadas'] or 0)
+
+            for act in Activity.objects.filter(
+                usuario=user, due_date__isnull=False
+            ).exclude(id__in=actividades_con_subtareas).values('due_date', 'horas_estimadas'):
+                horas_dia[act['due_date']] += float(act['horas_estimadas'] or 0)
+
+            conflictos_actuales = [
+                {"fecha": str(fecha), "horas": round(total, 2)}
+                for fecha, total in sorted(horas_dia.items())
+                if total > limite_conflicto
+            ]
+
+            if conflictos_actuales:
+                # Actualizar con el estado real (pueden haber cambiado las horas)
+                user.limite_conflictos_pendientes = conflictos_actuales
+                user.save(update_fields=['limite_conflictos_pendientes'])
+                data["alerta_conflictos"] = {
+                    "limite_aplicado": limite_conflicto,
+                    "dias_en_conflicto": conflictos_actuales,
+                    "mensaje": (
+                        f"El límite de {limite_conflicto}h está activo pero los siguientes días "
+                        f"aún superan ese límite. Ajusta o reprograma esas actividades."
+                    ),
+                }
+            else:
+                # Ya no hay conflictos — limpiar automáticamente
+                user.limite_conflictos_pendientes = []
+                user.limite_conflictos_valor = None
+                user.save(update_fields=['limite_conflictos_pendientes', 'limite_conflictos_valor'])
+
+        return self.success(data, "Limite de horas diarias obtenido correctamente.")
 
     def put(self, request):
         from django.db.models import Sum
@@ -431,18 +481,33 @@ class LimiteHorasDiariasView(BaseView, APIView):
             }, status=200)
 
         # ── 4. Aplicar el cambio (sin conflicto, o confirmado por el usuario)
-        request.user.limite_horas_diarias = nuevo_limite
-        request.user.save()
+        user = request.user
+        user.limite_horas_diarias = nuevo_limite
 
         if hay_conflicto and confirmar:
+            # Persistir conflictos: el GET los devolverá hasta que el usuario
+            # ajuste esos días y vuelva a llamar a este endpoint sin conflictos.
+            user.limite_conflictos_pendientes = dias_en_conflicto
+            user.limite_conflictos_valor = nuevo_limite
+            user.save()
             return self.success({
                 "limite_horas_diarias": nuevo_limite,
                 "conflictos": True,
-            }, (
-                "El límite de horas fue actualizado con conflictos, existen días que superan "
-                "el nuevo límite. Se recomienda reprogramar las actividades."
-            ))
+                "dias_en_conflicto": dias_en_conflicto,
+                "mensaje": (
+                    f"El límite de horas fue actualizado a {nuevo_limite}h con conflictos. "
+                    f"Los siguientes días aún superan ese límite: "
+                    + ", ".join(
+                        f"{d['fecha']} ({d['horas']}h)" for d in dias_en_conflicto
+                    )
+                    + ". Se recomienda reprogramar esas actividades."
+                ),
+            }, "Límite actualizado. Existen conflictos pendientes de resolver.")
 
+        # Sin conflictos: limpiar cualquier alerta pendiente anterior
+        user.limite_conflictos_pendientes = []
+        user.limite_conflictos_valor = None
+        user.save()
         return self.success({
             "limite_horas_diarias": nuevo_limite,
             "conflictos": False,
