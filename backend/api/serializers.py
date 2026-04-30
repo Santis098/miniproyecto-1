@@ -407,32 +407,44 @@ class SubtaskEstadoSerializer(serializers.ModelSerializer):
     """
     Usado exclusivamente en PATCH /subtasks/{id}/estado/
     Valida:
-      - Si estado='pospuesta' y no viene nota → error
+      - Si estado='pospuesta':
+          * fecha es obligatoria (debe enviarse en el request)
+          * fecha debe ser futura (mayor a hoy)
+          * nota es opcional
       - Si estado='hecha' o 'pendiente' → nota se limpia a null automáticamente
     """
     estado = serializers.ChoiceField(
         choices=['pendiente', 'hecha', 'pospuesta'],
         required=True
     )
-    nota   = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    nota  = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    fecha = serializers.DateField(required=False, allow_null=True)
 
     class Meta:
         model  = Subtask
-        fields = ['estado', 'nota']
+        fields = ['estado', 'nota', 'fecha']
 
     def validate(self, attrs):
         estado = attrs.get('estado')
-        nota   = attrs.get('nota', None)
 
         if estado == 'pospuesta':
-            # nota debe existir y no estar vacía
-            if not nota or not nota.strip():
-                raise serializers.ValidationError({
-                    'nota': (
-                        "Debes indicar un motivo cuando la subtarea se pospone. "
-                        "El campo 'nota' es obligatorio para estado 'pospuesta'."
-                    )
-                })
+            # fecha debe enviarse explícitamente en el request
+            if 'fecha' not in self.initial_data:
+                raise serializers.ValidationError(
+                    "Debe enviar una nueva fecha para posponer la subtarea."
+                )
+
+            fecha = attrs.get('fecha')
+            if fecha is None:
+                raise serializers.ValidationError(
+                    "Debe enviar una nueva fecha para posponer la subtarea."
+                )
+
+            # fecha debe ser futura (estrictamente mayor a hoy)
+            if fecha <= timezone.localdate():
+                raise serializers.ValidationError(
+                    "La fecha debe ser futura para una subtarea pospuesta."
+                )
 
         if estado != 'pospuesta':
             # 'hecha' y 'pendiente' no llevan nota → limpiar
