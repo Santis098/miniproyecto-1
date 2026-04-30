@@ -360,21 +360,93 @@ class LimiteHorasDiariasView(BaseView, APIView):
         }, "Limite de horas diarias obtenido correctamente.")
 
     def put(self, request):
-        limite = request.data.get('limite_horas_diarias')
-        if limite is None:
+        from django.db.models import Sum
+
+        # ── 1. Validar y sanitizar el nuevo límite
+        limite_raw = request.data.get('limite_horas_diarias')
+        if limite_raw is None:
             return self.error("El campo limite_horas_diarias es requerido.")
         try:
-            limite = float(limite)
-            if limite <= 0 or limite > 24:
+            nuevo_limite = float(limite_raw)
+            if nuevo_limite <= 0 or nuevo_limite > 24:
                 return self.error("El limite debe ser entre 1 y 24 horas.")
         except (ValueError, TypeError):
             return self.error("El limite debe ser un numero valido.")
 
-        request.user.limite_horas_diarias = limite
+        confirmar = str(request.data.get('confirmar', 'false')).lower() == 'true'
+
+        # ── 2. Detectar conflictos: calcular horas reales por día
+        #
+        #    REGLA DE NEGOCIO (consistente con _calcular_horas_dia):
+        #    - Actividades CON subtareas: sus horas se distribuyen en los días
+        #      de cada subtarea (Subtask.fecha + Subtask.horas_estimadas).
+        #    - Actividades SIN subtareas: sus horas se asignan al due_date
+        #      (fecha de entrega), igual que hace _calcular_horas_dia().
+
+        from collections import defaultdict
+
+        horas_dia = defaultdict(float)
+
+        # -- Actividades CON subtareas: sumar horas de cada subtarea en su fecha
+        subtareas = (
+            Subtask.objects
+            .filter(activity__usuario=request.user)
+            .values('fecha', 'horas_estimadas', 'activity_id')
+        )
+        actividades_con_subtareas = set()
+        for st in subtareas:
+            actividades_con_subtareas.add(st['activity_id'])
+            if st['fecha'] is not None:
+                horas_dia[st['fecha']] += float(st['horas_estimadas'] or 0)
+
+        # -- Actividades SIN subtareas: sus horas van al due_date
+        actividades_sin_subtareas = (
+            Activity.objects
+            .filter(usuario=request.user, due_date__isnull=False)
+            .exclude(id__in=actividades_con_subtareas)
+            .values('due_date', 'horas_estimadas')
+        )
+        for act in actividades_sin_subtareas:
+            horas_dia[act['due_date']] += float(act['horas_estimadas'] or 0)
+
+        # -- Detectar días que superan el nuevo límite
+        dias_en_conflicto = [
+            {"fecha": str(fecha), "horas": round(total, 2)}
+            for fecha, total in sorted(horas_dia.items())
+            if total > nuevo_limite
+        ]
+
+        hay_conflicto = len(dias_en_conflicto) > 0
+
+        # ── 3. Si hay conflicto y el usuario no confirmó → devolver warning
+        if hay_conflicto and not confirmar:
+            return Response({
+                "status": "warning",
+                "message": "Conflicto con el nuevo límite de horas",
+                "data": {
+                    "nuevo_limite": nuevo_limite,
+                    "dias_en_conflicto": dias_en_conflicto,
+                    "mensaje": "Existen días que superan el nuevo límite. ¿Deseas continuar?",
+                }
+            }, status=200)
+
+        # ── 4. Aplicar el cambio (sin conflicto, o confirmado por el usuario)
+        request.user.limite_horas_diarias = nuevo_limite
         request.user.save()
+
+        if hay_conflicto and confirmar:
+            return self.success({
+                "limite_horas_diarias": nuevo_limite,
+                "conflictos": True,
+            }, (
+                "El límite de horas fue actualizado con conflictos, existen días que superan "
+                "el nuevo límite. Se recomienda reprogramar las actividades."
+            ))
+
         return self.success({
-            "limite_horas_diarias": limite
-        }, "Limite de horas diarias actualizado correctamente.")
+            "limite_horas_diarias": nuevo_limite,
+            "conflictos": False,
+        }, "Límite de horas diarias actualizado correctamente.")
 
 
 # ==============================
