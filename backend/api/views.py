@@ -1923,6 +1923,124 @@ class ActivityV2View(BaseView, APIView):
 
 
 # ==============================
+# SPRINT 8 — REGISTRAR HORAS INVERTIDAS EN ACTIVIDAD SIN SUBTAREAS
+# PATCH /api/v2/activities/<pk>/horas/
+#
+# Reglas (solo aplica a actividades SIN subtareas):
+#   horas_invertidas < horas_estimadas  → no completada (actualiza horas_trabajadas)
+#   horas_invertidas == horas_estimadas → completada    (actualiza horas_trabajadas)
+#   horas_invertidas > horas_estimadas  → error 400
+#
+# Si la actividad TIENE subtareas → error 400 (usar endpoint de subtareas).
+# ==============================
+
+class RegistrarHorasActividadView(BaseView, APIView):
+    """
+    PATCH /api/v2/activities/<pk>/horas/
+
+    Registra las horas invertidas en una actividad que NO tiene subtareas.
+    Actualiza el campo horas_trabajadas del modelo Activity.
+
+    Reglas de negocio:
+      - La actividad debe pertenecer al usuario autenticado.
+      - La actividad NO debe tener subtareas (usar endpoint de estado de subtarea
+        para actividades con subtareas).
+      - horas_invertidas debe ser un número >= 0.
+      - Si horas_invertidas > horas_estimadas → error 400 con mensaje descriptivo.
+      - Si horas_invertidas == horas_estimadas → la actividad queda completada.
+      - Si horas_invertidas < horas_estimadas → la actividad queda en progreso
+        (o sin empezar si horas_invertidas == 0).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        # 1. Verificar que la actividad existe y pertenece al usuario
+        try:
+            actividad = Activity.objects.get(pk=pk, usuario=request.user)
+        except Activity.DoesNotExist:
+            return std_error(
+                "Actividad no encontrada o no tienes permiso para modificarla.",
+                error_code="NOT_FOUND",
+                status_code=404,
+            )
+
+        # 2. Verificar que la actividad NO tiene subtareas
+        if actividad.subtasks.exists():
+            return std_error(
+                "Esta actividad tiene subtareas. Usa el endpoint de estado de subtareas "
+                "para registrar el progreso.",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            )
+
+        # 3. Obtener y validar horas_invertidas del body
+        horas_raw = request.data.get("horas_invertidas")
+        if horas_raw is None:
+            return std_error(
+                "El campo horas_invertidas es requerido.",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            )
+
+        try:
+            horas_invertidas = float(horas_raw)
+        except (TypeError, ValueError):
+            return std_error(
+                "El campo horas_invertidas debe ser un número válido.",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            )
+
+        if horas_invertidas < 0:
+            return std_error(
+                "Las horas invertidas no pueden ser negativas.",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            )
+
+        horas_estimadas = float(actividad.horas_estimadas or 0)
+
+        # 4. Aplicar reglas de negocio
+        if horas_invertidas > horas_estimadas:
+            return std_error(
+                "Las horas invertidas no pueden ser mayores a las horas estimadas de la actividad.",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            )
+
+        # horas_invertidas <= horas_estimadas → guardar siempre
+        actividad.horas_trabajadas = horas_invertidas
+        actividad.save(update_fields=["horas_trabajadas", "updated_at"])
+
+        # 5. Calcular estado resultante para informar al cliente
+        if horas_estimadas <= 0:
+            estado = "sin_horas"
+        elif horas_invertidas == 0:
+            estado = "sin_empezar"
+        elif horas_invertidas == horas_estimadas:
+            estado = "completada"
+        else:
+            estado = "en_progreso"
+
+        porcentaje = (
+            round((horas_invertidas / horas_estimadas) * 100, 1)
+            if horas_estimadas > 0 else 0
+        )
+
+        return std_success(
+            {
+                "activity_id":      actividad.pk,
+                "horas_estimadas":  horas_estimadas,
+                "horas_invertidas": horas_invertidas,
+                "estado":           estado,
+                "porcentaje_completado": porcentaje,
+            },
+            "Horas registradas correctamente.",
+            status_code=200,
+        )
+
+
+# ==============================
 # SWAGGER / EXTEND_SCHEMA — documentación de todos los endpoints
 # Se aplica DESPUÉS de definir las clases para no tocar ningún código existente.
 # ==============================
@@ -2301,3 +2419,28 @@ ActivityDistribuirView = extend_schema(
         422: {"description": "Sin días laborables disponibles en el rango de fechas."},
     }
 )(ActivityDistribuirView)
+RegistrarHorasActividadView = extend_schema(
+    tags=["Actividades v2"],
+    summary="Registrar horas invertidas en actividad sin subtareas (Sprint 8)",
+    description=(
+        "Actualiza las horas_trabajadas de una actividad que NO tiene subtareas. "
+        "Reglas: horas_invertidas < horas_estimadas → en progreso; "
+        "horas_invertidas == horas_estimadas → completada; "
+        "horas_invertidas > horas_estimadas → error 400. "
+        "Si la actividad tiene subtareas el endpoint rechaza la petición."
+    ),
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "horas_invertidas": {"type": "number", "example": 3.5},
+            },
+            "required": ["horas_invertidas"],
+        }
+    },
+    responses={
+        200: {"description": "Horas registradas. Devuelve estado y porcentaje_completado."},
+        400: {"description": "Horas mayores a estimadas, actividad con subtareas, o datos inválidos."},
+        404: {"description": "Actividad no encontrada."},
+    }
+)(RegistrarHorasActividadView)

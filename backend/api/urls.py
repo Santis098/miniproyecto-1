@@ -16,6 +16,8 @@ from .views import (
     TareasHoyV2View,
     SubtaskEstadoView,
     ActivityProgresoView,
+    # Sprint 8 — Registrar horas en actividad sin subtareas
+    RegistrarHorasActividadView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -67,6 +69,9 @@ urlpatterns = [
 
     # Sprint 7 — Progreso de actividad
     path('v2/activities/<int:pk>/progreso/', ActivityProgresoView.as_view(), name='v2-activity-progreso'),
+
+    # Sprint 8 — Registrar horas invertidas (actividades sin subtareas)
+    path('v2/activities/<int:pk>/horas/', RegistrarHorasActividadView.as_view(), name='v2-activity-horas'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
