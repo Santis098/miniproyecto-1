@@ -9,7 +9,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from .serializers import (
     AsignaturaSerializer, ActivitySerializer, SubtaskSerializer,
-    RegisterSerializer, LoginSerializer, TareaHoySerializer
+    RegisterSerializer, LoginSerializer, TareaHoySerializer,
+    TareaHoyV2Serializer,
 )
 
 
@@ -247,9 +248,17 @@ class SubtaskRetrieveUpdateDestroyAPIView(BaseView, generics.RetrieveUpdateDestr
         return self.success(serializer.data, "Subtarea actualizada correctamente.")
 
     def destroy(self, request, *args, **kwargs):
-        self.get_object().delete()
-        return self.success(None, "Subtarea eliminada correctamente.")
+        subtarea = self.get_object()
+        actividad = subtarea.activity # Guardamos a quién pertenecía antes de borrarla
+        subtarea.delete()
 
+        # 🟢 CORRECCIÓN: Al borrar una subtarea, recalculamos las horas del padre
+        from django.db.models import Sum
+        suma_hechas = float(actividad.subtasks.filter(estado="hecha").aggregate(total=Sum('horas_estimadas'))['total'] or 0)
+        actividad.horas_trabajadas = suma_hechas
+        actividad.save(update_fields=["horas_trabajadas", "updated_at"])
+
+        return self.success(None, "Subtarea eliminada correctamente.")
 
 # ==============================
 # REPROGRAMAR ACTIVIDAD
@@ -367,8 +376,26 @@ class TareasHoyView(BaseView, APIView):
 class LimiteHorasDiariasView(BaseView, APIView):
     permission_classes = [IsAuthenticated]
 
+    def _get_actividades_pendientes(self, user):
+        from django.db.models import F, Q, Exists, OuterRef
+        # Filtra subtareas que no estén hechas
+        subs_pendientes = Subtask.objects.filter(
+            activity=OuterRef('pk')
+        ).exclude(estado='hecha')
+        
+        # Retorna solo las actividades que NO están completadas
+        return Activity.objects.filter(
+            usuario=user, due_date__isnull=False
+        ).annotate(
+            _tiene_subs_pendientes=Exists(subs_pendientes)
+        ).exclude(
+            Q(horas_estimadas__gt=0)
+            & Q(horas_trabajadas__gte=F('horas_estimadas'))
+            & Q(_tiene_subs_pendientes=False)
+        )
+
     def get(self, request):
-        from collections import defaultdict
+        from django.db.models import Sum
 
         user = request.user
         limite = getattr(user, 'limite_horas_diarias', 6)
@@ -377,35 +404,18 @@ class LimiteHorasDiariasView(BaseView, APIView):
 
         data = {"limite_horas_diarias": limite}
 
-        # Solo recalcular si hay conflictos persistidos — evita queries innecesarias
         if conflictos_guardados and limite_conflicto is not None:
-            # Recalcular horas reales por día (misma lógica que el PUT)
-            horas_dia = defaultdict(float)
-
-            subtareas = (
-                Subtask.objects
-                .filter(activity__usuario=user)
-                .values('fecha', 'horas_estimadas', 'activity_id')
-            )
-            actividades_con_subtareas = set()
-            for st in subtareas:
-                actividades_con_subtareas.add(st['activity_id'])
-                if st['fecha'] is not None:
-                    horas_dia[st['fecha']] += float(st['horas_estimadas'] or 0)
-
-            for act in Activity.objects.filter(
-                usuario=user, due_date__isnull=False
-            ).exclude(id__in=actividades_con_subtareas).values('due_date', 'horas_estimadas'):
-                horas_dia[act['due_date']] += float(act['horas_estimadas'] or 0)
+            # 🟢 CORRECCIÓN: Sumar solo actividades PENDIENTES, ignorando las completadas
+            actividades = self._get_actividades_pendientes(user).values('due_date').annotate(total=Sum('horas_estimadas'))
 
             conflictos_actuales = [
-                {"fecha": str(fecha), "horas": round(total, 2)}
-                for fecha, total in sorted(horas_dia.items())
-                if total > limite_conflicto
+                {"fecha": str(act['due_date']), "horas": round(float(act['total']), 2)}
+                for act in actividades
+                if float(act['total']) > limite_conflicto
             ]
+            conflictos_actuales = sorted(conflictos_actuales, key=lambda x: x['fecha'])
 
             if conflictos_actuales:
-                # Actualizar con el estado real (pueden haber cambiado las horas)
                 user.limite_conflictos_pendientes = conflictos_actuales
                 user.save(update_fields=['limite_conflictos_pendientes'])
                 data["alerta_conflictos"] = {
@@ -417,7 +427,6 @@ class LimiteHorasDiariasView(BaseView, APIView):
                     ),
                 }
             else:
-                # Ya no hay conflictos — limpiar automáticamente
                 user.limite_conflictos_pendientes = []
                 user.limite_conflictos_valor = None
                 user.save(update_fields=['limite_conflictos_pendientes', 'limite_conflictos_valor'])
@@ -427,7 +436,6 @@ class LimiteHorasDiariasView(BaseView, APIView):
     def put(self, request):
         from django.db.models import Sum
 
-        # ── 1. Validar y sanitizar el nuevo límite
         limite_raw = request.data.get('limite_horas_diarias')
         if limite_raw is None:
             return self.error("El campo limite_horas_diarias es requerido.")
@@ -440,50 +448,18 @@ class LimiteHorasDiariasView(BaseView, APIView):
 
         confirmar = str(request.data.get('confirmar', 'false')).lower() == 'true'
 
-        # ── 2. Detectar conflictos: calcular horas reales por día
-        #
-        #    REGLA DE NEGOCIO (consistente con _calcular_horas_dia):
-        #    - Actividades CON subtareas: sus horas se distribuyen en los días
-        #      de cada subtarea (Subtask.fecha + Subtask.horas_estimadas).
-        #    - Actividades SIN subtareas: sus horas se asignan al due_date
-        #      (fecha de entrega), igual que hace _calcular_horas_dia().
+        # 🟢 CORRECCIÓN: Sumar solo actividades PENDIENTES
+        actividades = self._get_actividades_pendientes(request.user).values('due_date').annotate(total=Sum('horas_estimadas'))
 
-        from collections import defaultdict
-
-        horas_dia = defaultdict(float)
-
-        # -- Actividades CON subtareas: sumar horas de cada subtarea en su fecha
-        subtareas = (
-            Subtask.objects
-            .filter(activity__usuario=request.user)
-            .values('fecha', 'horas_estimadas', 'activity_id')
-        )
-        actividades_con_subtareas = set()
-        for st in subtareas:
-            actividades_con_subtareas.add(st['activity_id'])
-            if st['fecha'] is not None:
-                horas_dia[st['fecha']] += float(st['horas_estimadas'] or 0)
-
-        # -- Actividades SIN subtareas: sus horas van al due_date
-        actividades_sin_subtareas = (
-            Activity.objects
-            .filter(usuario=request.user, due_date__isnull=False)
-            .exclude(id__in=actividades_con_subtareas)
-            .values('due_date', 'horas_estimadas')
-        )
-        for act in actividades_sin_subtareas:
-            horas_dia[act['due_date']] += float(act['horas_estimadas'] or 0)
-
-        # -- Detectar días que superan el nuevo límite
         dias_en_conflicto = [
-            {"fecha": str(fecha), "horas": round(total, 2)}
-            for fecha, total in sorted(horas_dia.items())
-            if total > nuevo_limite
+            {"fecha": str(act['due_date']), "horas": round(float(act['total']), 2)}
+            for act in actividades
+            if float(act['total']) > nuevo_limite
         ]
+        dias_en_conflicto = sorted(dias_en_conflicto, key=lambda x: x['fecha'])
 
         hay_conflicto = len(dias_en_conflicto) > 0
 
-        # ── 3. Si hay conflicto y el usuario no confirmó → devolver warning
         if hay_conflicto and not confirmar:
             return Response({
                 "status": "warning",
@@ -495,13 +471,10 @@ class LimiteHorasDiariasView(BaseView, APIView):
                 }
             }, status=200)
 
-        # ── 4. Aplicar el cambio (sin conflicto, o confirmado por el usuario)
         user = request.user
         user.limite_horas_diarias = nuevo_limite
 
         if hay_conflicto and confirmar:
-            # Persistir conflictos: el GET los devolverá hasta que el usuario
-            # ajuste esos días y vuelva a llamar a este endpoint sin conflictos.
             user.limite_conflictos_pendientes = dias_en_conflicto
             user.limite_conflictos_valor = nuevo_limite
             user.save()
@@ -512,14 +485,11 @@ class LimiteHorasDiariasView(BaseView, APIView):
                 "mensaje": (
                     f"El límite de horas fue actualizado a {nuevo_limite}h con conflictos. "
                     f"Los siguientes días aún superan ese límite: "
-                    + ", ".join(
-                        f"{d['fecha']} ({d['horas']}h)" for d in dias_en_conflicto
-                    )
+                    + ", ".join(f"{d['fecha']} ({d['horas']}h)" for d in dias_en_conflicto)
                     + ". Se recomienda reprogramar esas actividades."
                 ),
             }, "Límite actualizado. Existen conflictos pendientes de resolver.")
 
-        # Sin conflictos: limpiar cualquier alerta pendiente anterior
         user.limite_conflictos_pendientes = []
         user.limite_conflictos_valor = None
         user.save()
@@ -1114,23 +1084,25 @@ def _calcular_horas_dia(user, fecha, excluir_subtarea_id=None) -> dict:
     REGLA DE NEGOCIO:
     - El límite diario se calcula SOLO sumando horas_estimadas de las Actividades
       cuyo due_date coincide con la fecha.
-    - Las subtareas NO cuentan para el límite diario. Las subtareas pertenecen
-      a una actividad y no pueden superar las horas de su actividad padre
-      (esa validación es independiente y se hace en el serializer).
-
-    Retorna:
-        {
-            "horas_actividades": float,  — SUM(horas_estimadas) de Activity en esa fecha
-            "total":             float,  — igual a horas_actividades
-        }
+    - 🟢 IGNORA actividades completadas.
     """
-    from django.db.models import Sum
+    from django.db.models import Sum, F, Q, Exists, OuterRef
 
-    # SUM real de actividades del usuario en esa fecha
+    subs_pendientes = Subtask.objects.filter(
+        activity=OuterRef('pk')
+    ).exclude(estado='hecha')
+
+    # SUM real de actividades PENDIENTES del usuario en esa fecha
     horas_actividades = round(float(
         Activity.objects.filter(
             usuario=user,
             due_date=fecha
+        ).annotate(
+            _tiene_subs_pendientes=Exists(subs_pendientes)
+        ).exclude(
+            Q(horas_estimadas__gt=0)
+            & Q(horas_trabajadas__gte=F('horas_estimadas'))
+            & Q(_tiene_subs_pendientes=False)
         ).aggregate(total=Sum('horas_estimadas'))['total'] or 0
     ), 2)
 
@@ -1378,7 +1350,6 @@ class SubtaskPatchV2View(APIView):
                     .get(pk=pk, activity__usuario=request.user)
                 )
 
-                # ── Sanitizar horas si vienen en el payload
                 if 'horas_estimadas' in request.data:
                     try:
                         _sanitizar_horas(request.data['horas_estimadas'])
@@ -1402,7 +1373,6 @@ class SubtaskPatchV2View(APIView):
                 nuevas_horas = float(serializer.validated_data.get('horas_estimadas', subtarea.horas_estimadas or 0))
                 actividad    = subtarea.activity
 
-                # ── Validar que las horas de la subtarea no superen las de su actividad padre
                 if 'horas_estimadas' in serializer.validated_data:
                     horas_otras = _calcular_horas_subtareas_actividad(actividad.id, excluir_subtarea_id=subtarea.id)
                     horas_actividad = float(actividad.horas_estimadas or 0)
@@ -1424,6 +1394,12 @@ class SubtaskPatchV2View(APIView):
                         }, status=422)
 
                 serializer.save()
+
+                # 🟢 CORRECCIÓN: Si cambiaste la duración de una subtarea que ya estaba terminada, recalcula el padre
+                from django.db.models import Sum
+                suma_hechas = float(actividad.subtasks.filter(estado="hecha").aggregate(total=Sum('horas_estimadas'))['total'] or 0)
+                actividad.horas_trabajadas = suma_hechas
+                actividad.save(update_fields=["horas_trabajadas", "updated_at"])
 
                 return Response({
                     "success": True,
@@ -1482,6 +1458,13 @@ class SubtaskEstadoView(APIView):
 
         serializer.save()
 
+        # 🟢 CORRECCIÓN: Calcular y actualizar las horas de la actividad padre automáticamente
+        from django.db.models import Sum
+        actividad = subtarea.activity
+        suma_hechas = float(actividad.subtasks.filter(estado="hecha").aggregate(total=Sum('horas_estimadas'))['total'] or 0)
+        actividad.horas_trabajadas = suma_hechas
+        actividad.save(update_fields=["horas_trabajadas", "updated_at"])
+
         return std_success(
             SubtaskSerializer(subtarea).data,
             "Estado de la subtarea actualizado correctamente.",
@@ -1515,6 +1498,8 @@ class ActivityProgresoView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
+        from django.db.models import Sum # Asegúrate de importar Sum
+
         # 1. Buscar la actividad garantizando que pertenece al usuario autenticado
         try:
             actividad = Activity.objects.get(pk=pk, usuario=request.user)
@@ -1528,22 +1513,29 @@ class ActivityProgresoView(APIView):
         # 2. Obtener todas las subtareas de la actividad
         subtareas = actividad.subtasks.all()
 
-        # 3. Contar total y completadas
-        total_subtareas = subtareas.count()
-        subtareas_hechas = subtareas.filter(estado="hecha").count()
+        # 3. Obtener horas estimadas de la actividad principal
+        horas_totales_actividad = float(actividad.horas_estimadas or 0)
 
-        # 4. Calcular progreso (evitar división por cero si no hay subtareas)
-        if total_subtareas == 0:
+        # 4. Sumar las horas de las subtareas que están "hechas"
+        horas_completadas = float(
+            subtareas.filter(estado="hecha").aggregate(total=Sum('horas_estimadas'))['total'] or 0
+        )
+
+        # 5. Calcular progreso basado en HORAS, no en cantidad
+        if horas_totales_actividad == 0:
             progreso = 0.0
         else:
-            progreso = round((subtareas_hechas / total_subtareas) * 100, 2)
+            # Calculamos y limitamos al 100% por seguridad
+            progreso = min(round((horas_completadas / horas_totales_actividad) * 100, 2), 100.0)
 
-        # 5. Responder con los datos calculados
+        # 6. Responder con los datos calculados (puedes enviar las horas extra si te sirven en el front)
         return std_success(
             {
                 "activity_id": actividad.pk,
-                "total_subtasks": total_subtareas,
-                "completed_subtasks": subtareas_hechas,
+                "total_subtasks": subtareas.count(),
+                "completed_subtasks": subtareas.filter(estado="hecha").count(),
+                "horas_totales_actividad": horas_totales_actividad,
+                "horas_completadas": horas_completadas,
                 "progress": progreso,
             },
             "Progreso de la actividad calculado correctamente.",
@@ -1841,18 +1833,29 @@ class TareasHoyV2View(BaseView, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from django.db.models import F
+        from django.db.models import F, Q, Exists, OuterRef
         hoy = timezone.localdate()
         fin_semana = hoy + timezone.timedelta(days=7)
         incluir_completadas = request.query_params.get('incluir_completadas', 'false').lower() == 'true'
 
         tareas = Activity.objects.filter(usuario=request.user)
 
-        # Excluir completadas por defecto
+        # Excluir completadas por defecto.
+        # Una actividad SOLO se considera completada si:
+        #   - h_est > 0 AND h_trab >= h_est
+        #   - Y, si tiene subtareas, todas están en estado "hecha".
+        # Sin la segunda condición, una actividad con subtareas pendientes
+        # desaparecía de la lista por un h_trab "alto" residual de toggles previos.
         if not incluir_completadas:
-            tareas = tareas.exclude(
-                horas_estimadas__gt=0,
-                horas_trabajadas__gte=F('horas_estimadas')
+            subs_pendientes = Subtask.objects.filter(
+                activity=OuterRef('pk')
+            ).exclude(estado='hecha')
+            tareas = tareas.annotate(
+                _tiene_subs_pendientes=Exists(subs_pendientes)
+            ).exclude(
+                Q(horas_estimadas__gt=0)
+                & Q(horas_trabajadas__gte=F('horas_estimadas'))
+                & Q(_tiene_subs_pendientes=False)
             )
 
         if not tareas.exists():

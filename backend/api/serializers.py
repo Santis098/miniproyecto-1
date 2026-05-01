@@ -404,11 +404,25 @@ class TareaHoyV2Serializer(TareaHoySerializer):
         return labels.get(self.get_estado(obj), 'Desconocido')
 
     def get_porcentaje_completado(self, obj):
-        estimadas  = obj.horas_estimadas or 0
-        trabajadas = obj.horas_trabajadas or 0
+        from django.db.models import Sum
+        
+        estimadas = float(obj.horas_estimadas or 0)
         if estimadas <= 0:
-            return 0
-        return round(min((trabajadas / estimadas) * 100, 100), 1)
+            return 0.0
+
+        subtareas = obj.subtasks.all()
+        
+        # Si NO tiene subtareas, el progreso depende de horas_trabajadas
+        if not subtareas.exists():
+            trabajadas = float(obj.horas_trabajadas or 0)
+            return round(min((trabajadas / estimadas) * 100, 100), 1)
+
+        # Si TIENE subtareas, el progreso depende de las subtareas marcadas como "hecha"
+        horas_completadas = float(
+            subtareas.filter(estado="hecha").aggregate(total=Sum('horas_estimadas'))['total'] or 0
+        )
+        
+        return round(min((horas_completadas / estimadas) * 100, 100), 1)
 
 
 # ==============================
