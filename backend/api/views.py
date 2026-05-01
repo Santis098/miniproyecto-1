@@ -2175,14 +2175,20 @@ class CompletarActividadView(APIView):
             )
 
         # 5. Todas "hecha" Y (suma == horas_estimadas  O  forzar=true) → completar
+        # Si el usuario decidió finalizar con suma < horas_estimadas (forzar=true),
+        # se ajusta horas_estimadas para que coincida con la suma real de subtareas.
+        # Así la actividad queda completada de forma natural y consistente.
+        if forzar and suma_horas_subtareas < horas_estimadas_actividad:
+            actividad.horas_estimadas = suma_horas_subtareas
+
         actividad.horas_trabajadas = suma_horas_subtareas
-        actividad.save(update_fields=["horas_trabajadas", "updated_at"])
+        actividad.save(update_fields=["horas_estimadas", "horas_trabajadas", "updated_at"])
 
         return std_success(
             {
                 "activity_id": actividad.pk,
                 "status": "completada",
-                "horas_estimadas": horas_estimadas_actividad,
+                "horas_estimadas": actividad.horas_estimadas,
                 "suma_horas_subtareas": suma_horas_subtareas,
                 "total_subtasks": total_subtareas,
                 "completed_subtasks": subtareas_hechas,
