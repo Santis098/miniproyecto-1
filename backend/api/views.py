@@ -204,7 +204,16 @@ class SubtaskListCreateAPIView(BaseView, generics.ListCreateAPIView):
         activity = serializer.validated_data.get('activity')
         if activity and activity.usuario != request.user:
             return self.error("No tienes permiso para agregar subtareas a esta actividad.", status_code=status.HTTP_403_FORBIDDEN)
+
+        # Si la actividad aún no tenía subtareas, resetear horas_trabajadas a 0
+        reset_horas = activity and not activity.subtasks.exists() and activity.horas_trabajadas != 0
+
         serializer.save()
+
+        if reset_horas:
+            activity.horas_trabajadas = 0
+            activity.save(update_fields=["horas_trabajadas", "updated_at"])
+
         return self.success(serializer.data, "Subtarea creada exitosamente.", status.HTTP_201_CREATED)
 
 
@@ -988,7 +997,16 @@ class SubtaskCreateV2View(APIView):
                 status_code=403
             )
 
+        # Si la actividad aún no tenía subtareas, resetear horas_trabajadas a 0
+        # (regla: actividades con subtareas no pueden tener horas_trabajadas)
+        reset_horas = activity and not activity.subtasks.exists() and activity.horas_trabajadas != 0
+
         serializer.save()
+
+        if reset_horas:
+            activity.horas_trabajadas = 0
+            activity.save(update_fields=["horas_trabajadas", "updated_at"])
+
         return std_success(serializer.data, "Subtarea creada correctamente.", status_code=201)
 
 
@@ -1967,8 +1985,7 @@ class RegistrarHorasActividadView(BaseView, APIView):
         # 2. Verificar que la actividad NO tiene subtareas
         if actividad.subtasks.exists():
             return std_error(
-                "Esta actividad tiene subtareas. Usa el endpoint de estado de subtareas "
-                "para registrar el progreso.",
+                "No se pueden usar horas invertidas en actividades con subtareas.",
                 error_code="VALIDATION_ERROR",
                 status_code=400,
             )

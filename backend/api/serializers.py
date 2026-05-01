@@ -204,6 +204,11 @@ class ActivitySerializer(serializers.ModelSerializer):
             validated_data['asignatura'] = asignatura_obj
 
         activity = Activity.objects.create(**validated_data)
+        if subtasks_data:
+            # Regla: actividades con subtareas no pueden tener horas_trabajadas
+            if activity.horas_trabajadas != 0:
+                activity.horas_trabajadas = 0
+                activity.save(update_fields=["horas_trabajadas"])
         for subtask_data in subtasks_data:
             Subtask.objects.create(activity=activity, **subtask_data)
         return activity
@@ -234,8 +239,18 @@ class ActivitySerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         from django.db.models import Sum
 
-        # Aplica solo en actualizaciones (instance != None) donde se envía horas_estimadas
         instance = self.instance
+
+        # Bloquear horas_trabajadas si la actividad tiene subtareas
+        if instance is not None and 'horas_trabajadas' in attrs:
+            if instance.subtasks.exists():
+                raise serializers.ValidationError({
+                    "horas_trabajadas": (
+                        "No se pueden usar horas invertidas en actividades con subtareas."
+                    )
+                })
+
+        # Aplica solo en actualizaciones (instance != None) donde se envía horas_estimadas
         if instance is not None and 'horas_estimadas' in attrs:
             nuevas_horas = float(attrs['horas_estimadas'])
             total_subtareas = round(
