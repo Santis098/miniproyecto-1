@@ -205,16 +205,22 @@ class SubtaskListCreateAPIView(BaseView, generics.ListCreateAPIView):
         if activity and activity.usuario != request.user:
             return self.error("No tienes permiso para agregar subtareas a esta actividad.", status_code=status.HTTP_403_FORBIDDEN)
 
-        # Si la actividad aún no tenía subtareas, resetear horas_trabajadas a 0
-        reset_horas = activity and not activity.subtasks.exists() and activity.horas_trabajadas != 0
+        # Si la actividad aún no tenía subtareas, esta es la PRIMERA subtarea:
+        # se resetean horas_trabajadas a 0 siempre (independientemente de su valor),
+        # ya que desde ahora el progreso se gestiona exclusivamente por subtareas.
+        is_first_subtask = activity and not activity.subtasks.exists()
 
         serializer.save()
 
-        if reset_horas:
+        if is_first_subtask:
             activity.horas_trabajadas = 0
             activity.save(update_fields=["horas_trabajadas", "updated_at"])
 
-        return self.success(serializer.data, "Subtarea creada exitosamente.", status.HTTP_201_CREATED)
+        response_data = dict(serializer.data)
+        if is_first_subtask:
+            response_data["horas_trabajadas_reseteadas"] = True
+
+        return self.success(response_data, "Subtarea creada exitosamente.", status.HTTP_201_CREATED)
 
 
 class SubtaskRetrieveUpdateDestroyAPIView(BaseView, generics.RetrieveUpdateDestroyAPIView):
@@ -997,17 +1003,22 @@ class SubtaskCreateV2View(APIView):
                 status_code=403
             )
 
-        # Si la actividad aún no tenía subtareas, resetear horas_trabajadas a 0
-        # (regla: actividades con subtareas no pueden tener horas_trabajadas)
-        reset_horas = activity and not activity.subtasks.exists() and activity.horas_trabajadas != 0
+        # Si la actividad aún no tenía subtareas, esta es la PRIMERA subtarea:
+        # se resetean horas_trabajadas a 0 siempre (independientemente de su valor),
+        # ya que desde ahora el progreso se gestiona exclusivamente por subtareas.
+        is_first_subtask = activity and not activity.subtasks.exists()
 
         serializer.save()
 
-        if reset_horas:
+        if is_first_subtask:
             activity.horas_trabajadas = 0
             activity.save(update_fields=["horas_trabajadas", "updated_at"])
 
-        return std_success(serializer.data, "Subtarea creada correctamente.", status_code=201)
+        response_data = dict(serializer.data)
+        if is_first_subtask:
+            response_data["horas_trabajadas_reseteadas"] = True
+
+        return std_success(response_data, "Subtarea creada correctamente.", status_code=201)
 
 
 def _humanize_subtask_errors(errors: dict) -> str:
