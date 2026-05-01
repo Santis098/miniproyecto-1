@@ -2194,6 +2194,101 @@ class CompletarActividadView(APIView):
 
 
 # ==============================
+# Sprint 10 — Actividades completadas al 100%
+# ==============================
+
+class ActividadesCompletadasView(BaseView, APIView):
+    """
+    GET /api/v2/activities/completadas/
+
+    Retorna SOLO las actividades completadas al 100% del usuario autenticado.
+
+    Criterios de completado:
+      - Sin subtareas  : horas_trabajadas == horas_estimadas (y horas_estimadas > 0)
+      - Con subtareas  : todas en estado "hecha" Y suma(horas_estimadas subtareas) >= horas_estimadas actividad
+      - Forzado        : actividades completadas con { "forzar": true } quedan marcadas igual
+                         (horas_trabajadas guarda la suma real; el flag "forzado" se refleja en la respuesta)
+
+    No se incluyen actividades parciales, pendientes, ni atrasadas.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Sum, F, Q
+
+        actividades_qs = Activity.objects.filter(
+            usuario=request.user,
+            horas_estimadas__gt=0,
+        ).prefetch_related("subtasks")
+
+        completadas = []
+
+        for actividad in actividades_qs:
+            subtareas = actividad.subtasks.all()
+            tiene_subtareas = subtareas.exists()
+
+            if tiene_subtareas:
+                # Todas deben estar en "hecha"
+                total = subtareas.count()
+                hechas = subtareas.filter(estado="hecha").count()
+                if hechas < total:
+                    continue  # hay subtareas pendientes/pospuestas → no completada
+
+                # Suma de horas de subtareas debe cubrir las estimadas de la actividad
+                suma = float(subtareas.aggregate(total=Sum("horas_estimadas"))["total"] or 0)
+                horas_est = float(actividad.horas_estimadas)
+
+                # Completado normal: suma exacta. Completado forzado: suma puede ser menor
+                # En ambos casos horas_trabajadas ya fue persistido por CompletarActividadView
+                es_forzado = suma < horas_est and actividad.horas_trabajadas > 0
+                es_normal = suma >= horas_est
+
+                if not (es_normal or es_forzado):
+                    continue
+
+                completadas.append({
+                    "id": actividad.pk,
+                    "title": actividad.title,
+                    "description": actividad.description,
+                    "due_date": str(actividad.due_date),
+                    "horas_estimadas": horas_est,
+                    "horas_invertidas": float(actividad.horas_trabajadas),
+                    "tipo": "con_subtareas",
+                    "subtareas_total": total,
+                    "subtareas_hechas": hechas,
+                    "forzar": es_forzado,
+                    "asignatura": actividad.asignatura.nombre if actividad.asignatura else None,
+                })
+
+            else:
+                # Sin subtareas: horas_trabajadas debe ser igual a horas_estimadas
+                if actividad.horas_trabajadas != actividad.horas_estimadas:
+                    continue
+
+                completadas.append({
+                    "id": actividad.pk,
+                    "title": actividad.title,
+                    "description": actividad.description,
+                    "due_date": str(actividad.due_date),
+                    "horas_estimadas": float(actividad.horas_estimadas),
+                    "horas_invertidas": float(actividad.horas_trabajadas),
+                    "tipo": "sin_subtareas",
+                    "subtareas_total": 0,
+                    "subtareas_hechas": 0,
+                    "forzar": False,
+                    "asignatura": actividad.asignatura.nombre if actividad.asignatura else None,
+                })
+
+        return self.success(
+            {
+                "total": len(completadas),
+                "actividades": completadas,
+            },
+            "Actividades completadas al 100% obtenidas correctamente.",
+        )
+
+
+# ==============================
 # SWAGGER / EXTEND_SCHEMA — documentación de todos los endpoints
 # Se aplica DESPUÉS de definir las clases para no tocar ningún código existente.
 # ==============================

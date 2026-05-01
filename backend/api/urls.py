@@ -20,6 +20,8 @@ from .views import (
     RegistrarHorasActividadView,
     # Sprint 9 — Completar actividad con subtareas
     CompletarActividadView,
+    # Sprint 10 — Listar actividades completadas al 100%
+    ActividadesCompletadasView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -77,6 +79,9 @@ urlpatterns = [
 
     # Sprint 9 — Completar actividad con subtareas
     path('v2/activities/<int:pk>/completar/', CompletarActividadView.as_view(), name='v2-activity-completar'),
+
+    # Sprint 10 — Actividades completadas al 100%
+    path('v2/activities/completadas/', ActividadesCompletadasView.as_view(), name='v2-activities-completadas'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
