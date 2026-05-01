@@ -106,9 +106,13 @@
 /* Tarjetas de Estadísticas */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
   margin-bottom: 30px;
+}
+
+@media (max-width: 1100px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 .stat-card {
@@ -140,12 +144,19 @@
   font-size: 0.8rem;
 }
 
-/* ===== Grid para las 3 columnas principales ===== */
+/* ===== Grid para las 4 columnas principales ===== */
 .sections-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
   align-items: stretch; /* Estira todas las columnas a la misma altura */
+}
+
+@media (max-width: 1400px) {
+  .sections-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .sections-grid { grid-template-columns: 1fr; }
 }
 
 /* Tarjeta General (Columna) */
@@ -153,16 +164,19 @@
   background: white;
   border: 1px solid #dfe1e6;
   border-radius: 8px;
-  padding: 20px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  height: 520px; /* Altura estática para garantizar que todas sean iguales */
+  height: 580px; /* Altura estática para garantizar que todas sean iguales */
+  min-width: 0;
+  box-sizing: border-box;
 }
 
-/* Dependiendo del diseño base de la tarjeta */
+/* Bordes superiores uniformes por posición de columna */
 .section-card:nth-child(1) { border-top: 4px solid #de350b; }
 .section-card:nth-child(2) { border-top: 4px solid #0052cc; }
 .section-card:nth-child(3) { border-top: 4px solid #6554c0; }
+.section-card:nth-child(4) { border-top: 4px solid #16a34a; }
 
 /* Contenedor del Título y Filtros - Asegura que todos arranquen el contenido en la misma línea */
 .section-header-area {
@@ -298,8 +312,8 @@
 }
 
 .activity-number {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background-color: #deebff;
   color: #0052cc;
@@ -307,6 +321,8 @@
   align-items: center;
   justify-content: center;
   font-weight: bold;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .activity-details h4 {
@@ -417,7 +433,7 @@
 /* ===== BOTONES EDITAR/ELIMINAR EN TARJETAS ===== */
 .card-btn-edit, .card-btn-del {
   background: none; border: none; cursor: pointer;
-  padding: 7px 9px; border-radius: 8px;
+  padding: 4px 5px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.2s, color 0.2s;
 }

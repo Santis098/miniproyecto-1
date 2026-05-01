@@ -19,7 +19,7 @@ const formatFecha = (f) => {
 };
 
 // ─── Límite diario de horas ───────────────────────────────────
-const LIMITE_HORAS_DIA = 6;
+
 
 /**
  * Suma las horas de actividades para una fecha dada, excluyendo una actividad por id.
@@ -55,11 +55,11 @@ const diaSiguiente = (fechaStr) => {
  * Busca la próxima fecha (desde el día siguiente) que tenga cupo para horasNecesarias.
  * Busca hasta 30 días hacia adelante.
  */
-const buscarProximaFechaDisponible = async (fechaBase, horasNecesarias, token, excluirId = null) => {
+const buscarProximaFechaDisponible = async (fechaBase, horasNecesarias, token, limiteDiario, excluirId = null) => {
   let candidata = diaSiguiente(fechaBase);
   for (let i = 0; i < 30; i++) {
     const ocupadas = await consultarHorasOcupadas(candidata, token, excluirId);
-    if (ocupadas + horasNecesarias <= LIMITE_HORAS_DIA) return candidata;
+    if (ocupadas + horasNecesarias <= limiteDiario) return candidata;
     candidata = diaSiguiente(candidata);
   }
   return null;
@@ -95,9 +95,10 @@ const IconSpinner = () => (
 //   3. overload_reprog   → día lleno y actividad ≤ 6h, mover todo al próximo día
 // ─────────────────────────────────────────────────────────────
 function AlertaSobrecarga({ data, onReprogramar, onElegirFecha, onDividir, cargando }) {
-  const { modo, horasOcupadas, horasActividad, horasBloque1, horasBloque2, fechaBloque1, fechaBloque2 } = data;
+  // 🟢 Aquí extraemos limiteDiario de la data
+  const { modo, horasOcupadas, horasActividad, horasBloque1, horasBloque2, fechaBloque1, fechaBloque2, limiteDiario } = data; 
 
-  // ── MODO: la actividad por sí sola supera 6h → proponer división
+  // ── MODO: la actividad por sí sola supera el límite → proponer división
   if (modo === 'overload_split') {
     return (
       <div style={{
@@ -114,10 +115,12 @@ function AlertaSobrecarga({ data, onReprogramar, onElegirFecha, onDividir, carga
           <span style={{ fontSize: 20, lineHeight: 1 }}>✂️</span>
           <div>
             <div style={{ fontWeight: 700, color: '#1e40af', fontSize: 14, marginBottom: 4 }}>
-              Actividad mayor a {LIMITE_HORAS_DIA}h
+              {/* 🟢 CORREGIDO: usar limiteDiario */}
+              Actividad mayor a {limiteDiario}h 
             </div>
             <div style={{ color: '#1e3a8a', fontSize: 13, lineHeight: 1.5 }}>
-              Esta actividad requiere <strong>{horasActividad}h</strong> pero el límite diario es <strong>{LIMITE_HORAS_DIA}h</strong>.
+              {/* 🟢 CORREGIDO: usar limiteDiario */}
+              Esta actividad requiere <strong>{horasActividad}h</strong> pero el límite diario es <strong>{limiteDiario}h</strong>.
               Te proponemos dividirla en dos partes:
             </div>
             <div style={{
@@ -188,7 +191,7 @@ function AlertaSobrecarga({ data, onReprogramar, onElegirFecha, onDividir, carga
     );
   }
 
-  // ── MODO: día ocupado, actividad ≤ 6h → reprogramar o elegir fecha
+  // ── MODO: día ocupado, actividad cabe pero el día está lleno → reprogramar
   return (
     <div style={{
       background: '#fff8f0',
@@ -208,7 +211,8 @@ function AlertaSobrecarga({ data, onReprogramar, onElegirFecha, onDividir, carga
           </div>
           <div style={{ color: '#78350f', fontSize: 13, lineHeight: 1.5 }}>
             Ya tienes <strong>{horasOcupadas}h</strong> programadas para ese día.
-            Superaste el límite diario de <strong>{LIMITE_HORAS_DIA}h</strong>.<br/>
+            {/* 🟢 CORREGIDO: usar limiteDiario */}
+            Superaste el límite diario de <strong>{limiteDiario}h</strong>.<br/>
             Para mantener tu productividad, te recomendamos reprogramar la actividad.
           </div>
         </div>
@@ -272,21 +276,27 @@ export function useDiaHoyLleno(token) {
   const [diaLleno, setDiaLleno] = useState(false);
   const [horasHoy, setHorasHoy] = useState(0);
   const [cargando, setCargando] = useState(true);
+  const [limite, setLimite] = useState(6);
 
   const verificar = async () => {
     if (!token) { setCargando(false); return; }
     setCargando(true);
-    const horas = await consultarHorasOcupadas(hoy(), token);
-    setHorasHoy(horas);
-    setDiaLleno(horas >= LIMITE_HORAS_DIA);
+    try {
+      const resLim = await fetch(`${API_BASE}/api/usuario/limite-horas/`, { headers: { Authorization: `Bearer ${token}` } });
+      const dataLim = await resLim.json();
+      const limiteUsuario = dataLim?.data?.limite_horas_diarias || 6;
+      setLimite(limiteUsuario);
+
+      const horas = await consultarHorasOcupadas(hoy(), token);
+      setHorasHoy(horas);
+      setDiaLleno(horas >= limiteUsuario);
+    } catch { }
     setCargando(false);
   };
 
-  useEffect(() => {
-    verificar();
-  }, [token]);
+  useEffect(() => { verificar(); }, [token]);
 
-  return { diaLleno, horasHoy, cargando, refrescar: verificar };
+  return { diaLleno, horasHoy, limite, cargando, refrescar: verificar };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -316,8 +326,19 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
   const [cargandoReprogramar, setCargandoReprogramar] = useState(false);
   const fechaInputRef = useRef(null);
   const mensajeRef = useRef(null);
+  const [limiteDiario, setLimiteDiario] = useState(6);
 
   const TODAY = hoy();
+
+  useEffect(() => {
+    const t = localStorage.getItem('token');
+    if (t) {
+      fetch(`${API_BASE}/api/usuario/limite-horas/`, { headers: { Authorization: `Bearer ${t}` } })
+        .then(r => r.json())
+        .then(d => { if (d?.data?.limite_horas_diarias) setLimiteDiario(d.data.limite_horas_diarias); })
+        .catch(() => {});
+    }
+  }, []);
 
   // ── Scroll automático al mensaje cuando aparece error o alerta ─
   useEffect(() => {
@@ -335,7 +356,7 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
     if (!alertaSobrecarga) return;
     setCargandoReprogramar(true);
     const token = localStorage.getItem('token');
-    const proxima = await buscarProximaFechaDisponible(fecha, parseFloat(horasEstimadas), token);
+    const proxima = await buscarProximaFechaDisponible(fecha, parseFloat(horasEstimadas), token, limiteDiario);
     setCargandoReprogramar(false);
     if (!proxima) {
       setAlertaSobrecarga(null);
@@ -405,12 +426,18 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
             fetch(API_BASE + '/api/subtasks/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ title: st.titulo, activity: actividadId1 })
+              body: JSON.stringify({ 
+                title: st.titulo, 
+                activity: actividadId1,
+                fecha: st.fecha,
+                horas_estimadas: parseFloat(st.horas)
+              })
             })
           ));
         }
         setAlertaSobrecarga(null);
         setSuccess(true);
+// ... resto del código
         setCargandoReprogramar(false);
         setTimeout(() => { if (onActivityCreated) onActivityCreated(); if (onClose) onClose(); }, 1500);
       } else {
@@ -540,7 +567,12 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
             fetch(API_BASE + '/api/subtasks/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ title: st.titulo, activity: actividadId })
+              body: JSON.stringify({ 
+                title: st.titulo, 
+                activity: actividadId,
+                fecha: st.fecha,
+                horas_estimadas: parseFloat(st.horas)
+              })
             }).then(r => r.json())
           ));
           try {
@@ -586,47 +618,44 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
     const horas = parseFloat(horasEstimadas);
     const token = localStorage.getItem('token');
 
-    // ── CASO 1: La actividad por sí sola supera 6h → proponer división ──
-    if (horas > LIMITE_HORAS_DIA) {
-      const horasBloque1 = LIMITE_HORAS_DIA;
-      const horasBloque2 = parseFloat((horas - LIMITE_HORAS_DIA).toFixed(2));
+    // ── CASO 1: La actividad por sí sola supera el límite → proponer división ──
+    if (horas > limiteDiario) {
+      const horasBloque1 = limiteDiario;
+      const horasBloque2 = parseFloat((horas - limiteDiario).toFixed(2));
       const fechaBloque1 = fecha;
 
-      // Verificar si el día elegido tiene cupo para bloque1
       const horasOcupadas1 = await consultarHorasOcupadas(fechaBloque1, token);
       let fechaRealBloque1 = fechaBloque1;
       let horasRealBloque1 = horasBloque1;
 
-      if (horasOcupadas1 + horasBloque1 > LIMITE_HORAS_DIA) {
-        // No cabe ni el bloque 1, ajustar cuántas caben hoy
-        const disponibleHoy = LIMITE_HORAS_DIA - horasOcupadas1;
+      if (horasOcupadas1 + horasBloque1 > limiteDiario) {
+        const disponibleHoy = limiteDiario - horasOcupadas1;
         if (disponibleHoy > 0) {
           horasRealBloque1 = parseFloat(disponibleHoy.toFixed(2));
         } else {
-          // Día lleno, buscar próximo disponible para todo
-          const proxima = await buscarProximaFechaDisponible(fecha, horasBloque1, token);
+          const proxima = await buscarProximaFechaDisponible(fecha, horasBloque1, token, limiteDiario);
           setAlertaSobrecarga({
             modo: 'overload_split',
+            limiteDiario, 
             horasActividad: horas,
             horasBloque1: horasBloque1,
             horasBloque2: horasBloque2,
             fechaBloque1: proxima || fecha,
             fechaBloque2: null,
           });
-          // Buscar también el bloque2
           if (proxima) {
-            const prox2 = await buscarProximaFechaDisponible(proxima, horasBloque2, token);
+            const prox2 = await buscarProximaFechaDisponible(proxima, horasBloque2, token, limiteDiario);
             setAlertaSobrecarga(prev => ({ ...prev, fechaBloque2: prox2 }));
           }
           return;
         }
       }
 
-      // Buscar fecha para bloque 2
-      const fechaBloque2 = await buscarProximaFechaDisponible(fechaRealBloque1, horasBloque2 || horas - horasRealBloque1, token);
+      const fechaBloque2 = await buscarProximaFechaDisponible(fechaRealBloque1, horasBloque2 || horas - horasRealBloque1, token, limiteDiario);
 
       setAlertaSobrecarga({
         modo: 'overload_split',
+        limiteDiario,
         horasActividad: horas,
         horasBloque1: horasRealBloque1,
         horasBloque2: parseFloat((horas - horasRealBloque1).toFixed(2)),
@@ -636,10 +665,10 @@ function CreateActivity({ onClose, onActivityCreated, fechaInicial }) {
       return;
     }
 
-    // ── CASO 2: La actividad cabe en 6h pero el día está lleno → reprogramar ──
+    // ── CASO 2: La actividad cabe en su día pero el día está lleno → reprogramar ──
     const horasOcupadas = await consultarHorasOcupadas(fecha, token);
-    if (horasOcupadas + horas > LIMITE_HORAS_DIA) {
-      setAlertaSobrecarga({ modo: 'overload_reprog', horasOcupadas });
+    if (horasOcupadas + horas > limiteDiario) {
+      setAlertaSobrecarga({ modo: 'overload_reprog', horasOcupadas, limiteDiario });
       return;
     }
 
@@ -930,6 +959,17 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
 
   const token = localStorage.getItem('token');
   const TODAY = hoy();
+  const [limiteDiario, setLimiteDiario] = useState(6);
+
+  useEffect(() => {
+    const t = localStorage.getItem('token');
+    if (t) {
+      fetch(`${API_BASE}/api/usuario/limite-horas/`, { headers: { Authorization: `Bearer ${t}` } })
+        .then(r => r.json())
+        .then(d => { if (d?.data?.limite_horas_diarias) setLimiteDiario(d.data.limite_horas_diarias); })
+        .catch(() => {});
+    }
+  }, []);
 
   // ── Scroll automático al mensaje cuando aparece error o alerta ─
   useEffect(() => {
@@ -944,7 +984,7 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
   const handleReprogramarEdit = async () => {
     if (!alertaSobrecarga) return;
     setCargandoReprogramar(true);
-    const proxima = await buscarProximaFechaDisponible(fecha, parseFloat(horasEstimadas), token, actividad.id);
+    const proxima = await buscarProximaFechaDisponible(fecha, parseFloat(horasEstimadas), token, limiteDiario, actividad.id);
     setCargandoReprogramar(false);
     if (!proxima) {
       setAlertaSobrecarga(null);
@@ -1153,8 +1193,8 @@ export function EditActivity({ actividad, onClose, onActualizado }) {
     if (parseFloat(horasEstimadas) % 0.5 !== 0) { setError('Las horas estimadas deben ser múltiplos de 0.5 (ej: 1, 1.5, 2).'); return; }
 
     const horasOcupadas = await consultarHorasOcupadas(fecha, token, actividad.id);
-    if (horasOcupadas + parseFloat(horasEstimadas) > LIMITE_HORAS_DIA) {
-      setAlertaSobrecarga({ modo: 'overload_reprog', horasOcupadas });
+    if (horasOcupadas + parseFloat(horasEstimadas) > limiteDiario) {
+      setAlertaSobrecarga({ modo: 'overload_reprog', horasOcupadas, limiteDiario });
       return;
     }
 

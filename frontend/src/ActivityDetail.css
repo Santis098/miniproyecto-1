@@ -354,3 +354,177 @@
   .detail-item .st-meta-col:last-of-type { display: none; }
   .subtask-add-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Sprint 6: Columna del título (título + badge de estado) ── */
+.st-titulo-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Sprint 6: Badge de estado clickeable (3 estados) ── */
+.st-estado-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.st-estado-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: filter 0.15s, transform 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+.st-estado-badge:hover {
+  filter: brightness(0.96);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+}
+.st-estado-badge:active { transform: translateY(0); }
+
+.st-estado-pendiente {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.st-estado-hecha {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+.st-estado-pospuesta {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.st-estado-nota {
+  font-size: 12px;
+  color: #78350f;
+  font-style: italic;
+  background: #fffbeb;
+  border: 1px dashed #fcd34d;
+  border-radius: 6px;
+  padding: 2px 8px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Sprint 6: Modal de cambio de estado ── */
+.estado-modal {
+  max-width: 460px;
+}
+.estado-modal-sub {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 14px !important;
+}
+.estado-radio-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.estado-radio {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #475569;
+  background: white;
+  transition: all 0.15s;
+}
+.estado-radio:hover { border-color: #94a3b8; background: #f8fafc; }
+.estado-radio input { margin: 0; }
+.estado-radio-activo {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.estado-nota-wrap {
+  margin-top: 4px;
+}
+.estado-nota-label {
+  display: block;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.estado-nota-obligatorio {
+  color: #dc2626;
+  font-weight: 600;
+  font-size: 12px;
+}
+.estado-nota-input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.estado-nota-input:focus { border-color: #2563eb; }
+.estado-nota-hint {
+  text-align: right;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+
+/* Mensaje de error del modal: rojo prominente para que se vea bien */
+.estado-error-msg {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1.5px solid #fca5a5;
+  border-left: 4px solid #dc2626;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+/* Toast de éxito (compartido) */
+.exito-toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #16a34a;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 6px 18px rgba(22, 163, 74, 0.25);
+  z-index: 1000;
+  animation: slideUp 0.25s ease;
+}
