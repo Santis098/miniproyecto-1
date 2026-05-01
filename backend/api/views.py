@@ -2069,6 +2069,131 @@ class RegistrarHorasActividadView(BaseView, APIView):
 
 
 # ==============================
+# SPRINT 9 — COMPLETAR ACTIVIDAD CON SUBTAREAS
+# POST /api/v2/activities/<pk>/completar/
+#
+# Reglas de negocio:
+#   1. La actividad DEBE tener subtareas (si no tiene, usar /horas/).
+#   2. Si hay subtareas PENDIENTES o POSPUESTAS → 400, no se puede completar.
+#   3. Todas "hecha" Y suma_horas == horas_estimadas → completada (200 ok).
+#   4. Todas "hecha" Y suma_horas < horas_estimadas  → warning 200 con
+#      status "warning_horas" y mensaje descriptivo. La actividad NO se
+#      marca como completada; el frontend decide si forzar o agregar subtareas.
+#   5. Acepta parámetro opcional { "forzar": true } para ignorar el warning
+#      y completar aunque la suma de horas sea menor.
+#   NOTA: horas_invertidas (horas_trabajadas) no se considera aquí.
+# ==============================
+
+class CompletarActividadView(APIView):
+    """
+    POST /api/v2/activities/<pk>/completar/
+
+    Intenta completar una actividad que tiene subtareas.
+
+    Body (opcional):
+        { "forzar": true }   → fuerza la completación aunque haya diferencia de horas.
+
+    Respuestas:
+        200 ok          → completada exitosamente (status: "completada")
+        200 warning     → todas hechas pero faltan horas (status: "warning_horas")
+        400             → hay subtareas pendientes/pospuestas, o sin subtareas
+        404             → actividad no encontrada
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        # 1. Verificar que la actividad existe y pertenece al usuario
+        try:
+            actividad = Activity.objects.get(pk=pk, usuario=request.user)
+        except Activity.DoesNotExist:
+            return std_error(
+                "Actividad no encontrada o no tienes permiso para modificarla.",
+                error_code="NOT_FOUND",
+                status_code=404,
+            )
+
+        # 2. Verificar que la actividad TIENE subtareas
+        subtareas = actividad.subtasks.all()
+        if not subtareas.exists():
+            return std_error(
+                "Esta actividad no tiene subtareas. Usa el endpoint /horas/ para registrar horas directamente.",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            )
+
+        total_subtareas = subtareas.count()
+        subtareas_hechas = subtareas.filter(estado="hecha").count()
+        subtareas_pendientes = subtareas.exclude(estado="hecha").count()
+
+        # 3. Si hay subtareas que NO están "hecha" → bloquear sin warning
+        if subtareas_pendientes > 0:
+            pendientes_detalle = list(
+                subtareas.exclude(estado="hecha").values("id", "title", "estado")
+            )
+            return std_error(
+                f"No se puede completar la actividad: {subtareas_pendientes} subtarea(s) aún no están en estado 'hecha'.",
+                error_code="SUBTASKS_PENDING",
+                data={
+                    "total_subtasks": total_subtareas,
+                    "completed_subtasks": subtareas_hechas,
+                    "pending_subtasks": subtareas_pendientes,
+                    "detalle": pendientes_detalle,
+                },
+                status_code=400,
+            )
+
+        # A partir de aquí: TODAS las subtareas están "hecha"
+        from django.db.models import Sum
+        suma_horas_subtareas = float(
+            subtareas.aggregate(total=Sum("horas_estimadas"))["total"] or 0
+        )
+        horas_estimadas_actividad = float(actividad.horas_estimadas or 0)
+
+        forzar = bool(request.data.get("forzar", False))
+
+        # 4. Todas "hecha" pero suma < horas_estimadas → warning (a menos que se fuerce)
+        if suma_horas_subtareas < horas_estimadas_actividad and not forzar:
+            diferencia = round(horas_estimadas_actividad - suma_horas_subtareas, 2)
+            return Response(
+                {
+                    "success": True,
+                    "status": "warning_horas",
+                    "message": (
+                        "Aún faltan horas para completar la actividad. "
+                        "¿Deseas finalizarla o agregar más subtareas?"
+                    ),
+                    "data": {
+                        "activity_id": actividad.pk,
+                        "horas_estimadas": horas_estimadas_actividad,
+                        "suma_horas_subtareas": suma_horas_subtareas,
+                        "horas_faltantes": diferencia,
+                        "total_subtasks": total_subtareas,
+                        "completed_subtasks": subtareas_hechas,
+                    },
+                },
+                status=200,
+            )
+
+        # 5. Todas "hecha" Y (suma == horas_estimadas  O  forzar=true) → completar
+        actividad.horas_trabajadas = suma_horas_subtareas
+        actividad.save(update_fields=["horas_trabajadas", "updated_at"])
+
+        return std_success(
+            {
+                "activity_id": actividad.pk,
+                "status": "completada",
+                "horas_estimadas": horas_estimadas_actividad,
+                "suma_horas_subtareas": suma_horas_subtareas,
+                "total_subtasks": total_subtareas,
+                "completed_subtasks": subtareas_hechas,
+                "forzado": forzar,
+            },
+            "Actividad completada exitosamente.",
+            status_code=200,
+        )
+
+
+# ==============================
 # SWAGGER / EXTEND_SCHEMA — documentación de todos los endpoints
 # Se aplica DESPUÉS de definir las clases para no tocar ningún código existente.
 # ==============================

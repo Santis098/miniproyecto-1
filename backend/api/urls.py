@@ -18,6 +18,8 @@ from .views import (
     ActivityProgresoView,
     # Sprint 8 — Registrar horas en actividad sin subtareas
     RegistrarHorasActividadView,
+    # Sprint 9 — Completar actividad con subtareas
+    CompletarActividadView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
@@ -72,6 +74,9 @@ urlpatterns = [
 
     # Sprint 8 — Registrar horas invertidas (actividades sin subtareas)
     path('v2/activities/<int:pk>/horas/', RegistrarHorasActividadView.as_view(), name='v2-activity-horas'),
+
+    # Sprint 9 — Completar actividad con subtareas
+    path('v2/activities/<int:pk>/completar/', CompletarActividadView.as_view(), name='v2-activity-completar'),
 
     # Swagger
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
