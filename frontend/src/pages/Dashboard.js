@@ -1109,6 +1109,9 @@ const Dashboard = () => {
                  else if (res.ok) {
                    setLimiteDiario(limiteIntentado);
                    setConflictoLimite(null);
+                   // Sincroniza también el banner persistente con el backend:
+                   // sin esto, queda mostrando el límite y los días del intento anterior.
+                   await recargarLimite();
                    setExitoMsg(`¡Excelente! Todos los conflictos resueltos. Límite aplicado: ${limiteIntentado}h.`);
                    setTimeout(() => setExitoMsg(''), 4000);
                  }
@@ -1116,6 +1119,9 @@ const Dashboard = () => {
                  console.error("Error validando el límite tras el ajuste:", err);
                }
             } else {
+               // Aunque no estábamos en flujo de cambio de límite, ajustar horas
+               // puede resolver conflictos persistidos previamente: refresca el banner.
+               await recargarLimite();
                setExitoMsg('Horas ajustadas correctamente.');
                setTimeout(() => setExitoMsg(''), 3000);
             }

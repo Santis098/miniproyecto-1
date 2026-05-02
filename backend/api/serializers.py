@@ -459,21 +459,21 @@ class SubtaskEstadoSerializer(serializers.ModelSerializer):
         if estado == 'pospuesta':
             # fecha debe enviarse explícitamente en el request
             if 'fecha' not in self.initial_data:
-                raise serializers.ValidationError(
-                    "Debe enviar una nueva fecha para posponer la subtarea."
-                )
+                raise serializers.ValidationError({
+                    "fecha": "Debe enviar una nueva fecha para posponer la subtarea."
+                })
 
             fecha = attrs.get('fecha')
             if fecha is None:
-                raise serializers.ValidationError(
-                    "Debe enviar una nueva fecha para posponer la subtarea."
-                )
+                raise serializers.ValidationError({
+                    "fecha": "Debe enviar una nueva fecha para posponer la subtarea."
+                })
 
             # fecha debe ser futura (estrictamente mayor a hoy)
             if fecha <= timezone.localdate():
-                raise serializers.ValidationError(
-                    "La fecha debe ser futura para una subtarea pospuesta."
-                )
+                raise serializers.ValidationError({
+                    "fecha": "La fecha debe ser futura: no puedes posponer a una fecha pasada o de hoy."
+                })
 
         if estado != 'pospuesta':
             # 'hecha' y 'pendiente' no llevan nota → limpiar

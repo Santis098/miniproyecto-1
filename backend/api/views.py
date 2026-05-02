@@ -400,29 +400,31 @@ class LimiteHorasDiariasView(BaseView, APIView):
         user = request.user
         limite = getattr(user, 'limite_horas_diarias', 6)
         conflictos_guardados = getattr(user, 'limite_conflictos_pendientes', []) or []
-        limite_conflicto = getattr(user, 'limite_conflictos_valor', None)
 
         data = {"limite_horas_diarias": limite}
 
-        if conflictos_guardados and limite_conflicto is not None:
-            # 🟢 CORRECCIÓN: Sumar solo actividades PENDIENTES, ignorando las completadas
+        # Solo evaluamos el banner si el usuario decidió guardar con conflictos previamente.
+        # Comparar SIEMPRE contra el límite actual (no contra el histórico) — así el banner
+        # refleja el estado real cuando el usuario cambia el límite o ajusta actividades.
+        if conflictos_guardados:
             actividades = self._get_actividades_pendientes(user).values('due_date').annotate(total=Sum('horas_estimadas'))
 
             conflictos_actuales = [
                 {"fecha": str(act['due_date']), "horas": round(float(act['total']), 2)}
                 for act in actividades
-                if float(act['total']) > limite_conflicto
+                if float(act['total']) > limite
             ]
             conflictos_actuales = sorted(conflictos_actuales, key=lambda x: x['fecha'])
 
             if conflictos_actuales:
                 user.limite_conflictos_pendientes = conflictos_actuales
-                user.save(update_fields=['limite_conflictos_pendientes'])
+                user.limite_conflictos_valor = limite
+                user.save(update_fields=['limite_conflictos_pendientes', 'limite_conflictos_valor'])
                 data["alerta_conflictos"] = {
-                    "limite_aplicado": limite_conflicto,
+                    "limite_aplicado": limite,
                     "dias_en_conflicto": conflictos_actuales,
                     "mensaje": (
-                        f"El límite de {limite_conflicto}h está activo pero los siguientes días "
+                        f"El límite de {limite}h está activo pero los siguientes días "
                         f"aún superan ese límite. Ajusta o reprograma esas actividades."
                     ),
                 }
@@ -992,15 +994,31 @@ class SubtaskCreateV2View(APIView):
 
 
 def _humanize_subtask_errors(errors: dict) -> str:
-    priority = [
-        ('title',           "El título debe tener al menos 3 caracteres."),
-        ('fecha',           "La fecha de la subtarea no puede superar la fecha de entrega de la actividad."),
-        ('horas_estimadas', "Las horas estimadas no pueden superar las horas totales de la actividad."),
-        ('activity',        "Debes indicar a qué actividad pertenece esta subtarea."),
-        ('estado',          "El estado debe ser 'pendiente', 'hecha' o 'pospuesta'."),
-        ('nota',            "Debes indicar un motivo cuando la subtarea se pospone."),
-    ]
-    for field, msg in priority:
+    # Si el serializer envió un mensaje específico para un campo, úsalo tal cual:
+    # así no perdemos contexto (p. ej. "fecha pasada" vs. "fecha mayor a la entrega").
+    def _first_msg(value):
+        if isinstance(value, list) and value:
+            return str(value[0])
+        if isinstance(value, str):
+            return value
+        return None
+
+    priority_fields = ['fecha', 'title', 'horas_estimadas', 'activity', 'estado', 'nota', 'non_field_errors']
+    for field in priority_fields:
+        if field in errors:
+            msg = _first_msg(errors[field])
+            if msg:
+                return msg
+
+    fallbacks = {
+        'title':           "El título debe tener al menos 3 caracteres.",
+        'fecha':           "La fecha de la subtarea no puede superar la fecha de entrega de la actividad.",
+        'horas_estimadas': "Las horas estimadas no pueden superar las horas totales de la actividad.",
+        'activity':        "Debes indicar a qué actividad pertenece esta subtarea.",
+        'estado':          "El estado debe ser 'pendiente', 'hecha' o 'pospuesta'.",
+        'nota':            "Debes indicar un motivo cuando la subtarea se pospone.",
+    }
+    for field, msg in fallbacks.items():
         if field in errors:
             return msg
     return "Revisa los datos de la subtarea e intenta de nuevo."

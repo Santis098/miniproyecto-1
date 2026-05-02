@@ -495,6 +495,14 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
         setErrorEstado('Debes seleccionar la nueva fecha a la que pospondrás la tarea.');
         return;
       }
+      const hoyStr = new Date().toISOString().split('T')[0];
+      if (fechaPosponer <= hoyStr) {
+        setErrorEstado(
+          `La fecha (${formatFecha(fechaPosponer)}) ya pasó o es hoy. ` +
+          `Posponer requiere una fecha futura.`
+        );
+        return;
+      }
       if (actividad.due_date && fechaPosponer > actividad.due_date) {
         setErrorEstado(
           `No puedes posponer más allá de la entrega de la actividad (${formatFecha(actividad.due_date)}). ` +
