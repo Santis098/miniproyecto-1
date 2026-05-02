@@ -414,6 +414,8 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
     const willBeCompleted = !st.is_completed;
     setLoadingToggle(st.id);
     try {
+      // SubtaskEstadoView ya sincroniza is_completed con el estado server-side,
+      // por lo que un único PATCH basta.
       await fetch(`${API_BASE}/api/v2/subtasks/${st.id}/estado/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -421,12 +423,6 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
           estado: willBeCompleted ? 'hecha' : 'pendiente',
           nota: null,
         })
-      });
-
-      await fetch(`${API_BASE}/api/subtasks/${st.id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ is_completed: willBeCompleted })
       });
 
       const subtasksProyectadas = subtasks.map(s => s.id === st.id
@@ -439,6 +435,10 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
         .reduce((acc, s) => acc + (s.horasMeta || 0), 0);
 
       setHorasTrabajadas(horasSub);
+      if (!willBeCompleted) {
+        // Al desmarcar, la actividad ya no está completada: refleja el cambio en el badge.
+        setActividadCompletada(false);
+      }
       if (onActualizado) onActualizado();
 
       cargarSubtasks();
@@ -489,10 +489,17 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
 
   const guardarEstado = async () => {
     setErrorEstado('');
-    
+
     if (estadoSeleccionado === 'pospuesta') {
       if (!fechaPosponer) {
         setErrorEstado('Debes seleccionar la nueva fecha a la que pospondrás la tarea.');
+        return;
+      }
+      if (actividad.due_date && fechaPosponer > actividad.due_date) {
+        setErrorEstado(
+          `No puedes posponer más allá de la entrega de la actividad (${formatFecha(actividad.due_date)}). ` +
+          `Si necesitas más tiempo, primero reprograma la fecha de entrega de la actividad.`
+        );
         return;
       }
       //if (!notaPosponer.trim()) {
@@ -520,13 +527,7 @@ function ActivityDetail({ actividad, onClose, onActualizado }) {
 
       if (res.ok && json?.success) {
         const targetIsCompleted = estadoSeleccionado === 'hecha';
-        if (editandoEstado.is_completed !== targetIsCompleted) {
-          await fetch(`${API_BASE}/api/subtasks/${editandoEstado.id}/`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ is_completed: targetIsCompleted })
-          });
-        }
+        // SubtaskEstadoView sincroniza is_completed server-side; no se requiere segundo PATCH.
 
         const subtasksProyectadas = subtasks.map(s => s.id === editandoEstado.id
           ? { 

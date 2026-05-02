@@ -68,6 +68,7 @@ class Activity(models.Model):
     )
     horas_estimadas = models.FloatField(default=0)
     horas_trabajadas = models.FloatField(default=0)
+    forzada = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

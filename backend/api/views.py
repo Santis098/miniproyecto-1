@@ -1458,12 +1458,29 @@ class SubtaskEstadoView(APIView):
 
         serializer.save()
 
-        # 🟢 CORRECCIÓN: Calcular y actualizar las horas de la actividad padre automáticamente
+        # 🟢 Sincronizar is_completed con el estado para evitar drift entre ambos campos
+        # (el frontend usa is_completed para el tachado y para detectar el toggle).
+        nuevo_estado = serializer.validated_data.get("estado")
+        debe_completar = nuevo_estado == "hecha"
+        if subtarea.is_completed != debe_completar:
+            subtarea.is_completed = debe_completar
+            subtarea.save(update_fields=["is_completed"])
+
+        # 🟢 CORRECCIÓN: Calcular y actualizar las horas de la actividad padre automáticamente.
+        # Si la subtarea sale del estado "hecha", también limpiamos la marca "forzada":
+        # la actividad ya no está completada, así que un futuro re-completado debe
+        # evaluarse desde cero (suma vs horas_estimadas) sin arrastrar el flag anterior.
         from django.db.models import Sum
         actividad = subtarea.activity
         suma_hechas = float(actividad.subtasks.filter(estado="hecha").aggregate(total=Sum('horas_estimadas'))['total'] or 0)
         actividad.horas_trabajadas = suma_hechas
-        actividad.save(update_fields=["horas_trabajadas", "updated_at"])
+
+        update_fields = ["horas_trabajadas", "updated_at"]
+        if nuevo_estado and nuevo_estado != "hecha" and actividad.forzada:
+            actividad.forzada = False
+            update_fields.append("forzada")
+
+        actividad.save(update_fields=update_fields)
 
         return std_success(
             SubtaskSerializer(subtarea).data,
@@ -2179,13 +2196,14 @@ class CompletarActividadView(APIView):
 
         # 5. Todas "hecha" Y (suma == horas_estimadas  O  forzar=true) → completar
         # Si el usuario decidió finalizar con suma < horas_estimadas (forzar=true),
-        # se ajusta horas_estimadas para que coincida con la suma real de subtareas.
-        # Así la actividad queda completada de forma natural y consistente.
+        # se ajusta horas_estimadas para que coincida con la suma real de subtareas
+        # y se marca la actividad como forzada para preservar el indicador en UI.
         if forzar and suma_horas_subtareas < horas_estimadas_actividad:
             actividad.horas_estimadas = suma_horas_subtareas
+            actividad.forzada = True
 
         actividad.horas_trabajadas = suma_horas_subtareas
-        actividad.save(update_fields=["horas_estimadas", "horas_trabajadas", "updated_at"])
+        actividad.save(update_fields=["horas_estimadas", "horas_trabajadas", "forzada", "updated_at"])
 
         return std_success(
             {
@@ -2243,16 +2261,13 @@ class ActividadesCompletadasView(BaseView, APIView):
                 if hechas < total:
                     continue  # hay subtareas pendientes/pospuestas → no completada
 
-                # Suma de horas de subtareas debe cubrir las estimadas de la actividad
+                # Suma de horas de subtareas debe cubrir las estimadas de la actividad.
+                # Cuando el usuario fuerza, CompletarActividadView ajusta horas_estimadas
+                # a la suma, por lo que un completado forzado también cumple suma >= horas_est.
                 suma = float(subtareas.aggregate(total=Sum("horas_estimadas"))["total"] or 0)
                 horas_est = float(actividad.horas_estimadas)
 
-                # Completado normal: suma exacta. Completado forzado: suma puede ser menor
-                # En ambos casos horas_trabajadas ya fue persistido por CompletarActividadView
-                es_forzado = suma < horas_est and actividad.horas_trabajadas > 0
-                es_normal = suma >= horas_est
-
-                if not (es_normal or es_forzado):
+                if suma < horas_est:
                     continue
 
                 completadas.append({
@@ -2265,7 +2280,7 @@ class ActividadesCompletadasView(BaseView, APIView):
                     "tipo": "con_subtareas",
                     "subtareas_total": total,
                     "subtareas_hechas": hechas,
-                    "forzar": es_forzado,
+                    "forzar": bool(actividad.forzada),
                     "asignatura": actividad.asignatura.nombre if actividad.asignatura else None,
                 })
 
